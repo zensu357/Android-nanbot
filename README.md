@@ -1,23 +1,36 @@
-# Android Nanobot
-
-[![License][license-shield]][license-url]
-[![Stars][stars-shield]][stars-url]
-[![Forks][forks-shield]][forks-url]
-[![Issues][issues-shield]][issues-url]
-[![Kotlin][kotlin-shield]][kotlin-url]
-[![Android][android-shield]][android-url]
+<h1 align="center">Android Nanobot</h1>
 
 <p align="center">
-  <h3 align="center">Android-native recreation of the Python nanobot agent</h3>
-  <p align="center">
-    Focused on matching the local agent core on Android rather than wrapping a Python runtime.
-    <br />
-    <a href="./CURRENT_STATUS.md"><strong>Current Status</strong></a>
-    ·
-    <a href="./DEVELOPMENT_PROGRESS_AND_ROADMAP.md"><strong>Roadmap</strong></a>
-    ·
-    <a href="./README.zh-CN.md"><strong>中文文档</strong></a>
-  </p>
+  <a href="https://github.com/zensu357/Android-nanobot/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/zensu357/Android-nanobot?style=flat-square" alt="License" />
+  </a>
+  <a href="https://github.com/zensu357/Android-nanobot/stargazers">
+    <img src="https://img.shields.io/github/stars/zensu357/Android-nanobot?style=flat-square" alt="Stars" />
+  </a>
+  <a href="https://github.com/zensu357/Android-nanobot/network/members">
+    <img src="https://img.shields.io/github/forks/zensu357/Android-nanobot?style=flat-square" alt="Forks" />
+  </a>
+  <a href="https://github.com/zensu357/Android-nanobot/issues">
+    <img src="https://img.shields.io/github/issues/zensu357/Android-nanobot?style=flat-square" alt="Issues" />
+  </a>
+  <a href="https://kotlinlang.org/">
+    <img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=flat-square&amp;logo=kotlin&amp;logoColor=white" alt="Kotlin" />
+  </a>
+  <a href="https://developer.android.com/">
+    <img src="https://img.shields.io/badge/Android-SDK%2035-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android" />
+  </a>
+</p>
+
+<p align="center">
+  <strong>Android-native recreation of the Python nanobot agent</strong>
+  <br />
+  Focused on matching the local agent core on Android rather than wrapping a Python runtime.
+  <br />
+  <a href="./CURRENT_STATUS.md"><strong>Current Status</strong></a>
+  ·
+  <a href="./DEVELOPMENT_PROGRESS_AND_ROADMAP.md"><strong>Roadmap</strong></a>
+  ·
+  <a href="./README.zh-CN.md"><strong>中文文档</strong></a>
 </p>
 
 ## Table of Contents
@@ -144,7 +157,7 @@ This project is licensed under the Apache License 2.0. See `LICENSE` for details
 
 ## Acknowledgements
 
-- Python `nanobot` as the reference design target
+- [`nanobot`](https://github.com/HKUDS/nanobot) by HKUDS, as the reference design target
 - Android Jetpack and Jetpack Compose
 - Room, WorkManager, Hilt, OkHttp, and kotlinx.serialization
 

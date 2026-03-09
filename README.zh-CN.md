@@ -1,23 +1,36 @@
-# Android Nanobot
-
-[![License][license-shield]][license-url]
-[![Stars][stars-shield]][stars-url]
-[![Forks][forks-shield]][forks-url]
-[![Issues][issues-shield]][issues-url]
-[![Kotlin][kotlin-shield]][kotlin-url]
-[![Android][android-shield]][android-url]
+<h1 align="center">Android Nanobot</h1>
 
 <p align="center">
-  <h3 align="center">Python nanobot agent 的 Android 原生复刻</h3>
-  <p align="center">
-    项目聚焦在 Android 上复刻本地 agent 核心行为，而不是包装一个 Python 运行时。
-    <br />
-    <a href="./CURRENT_STATUS.zh-CN.md"><strong>当前状态</strong></a>
-    ·
-    <a href="./DEVELOPMENT_PROGRESS_AND_ROADMAP.zh-CN.md"><strong>路线图</strong></a>
-    ·
-    <a href="./README.md"><strong>English Docs</strong></a>
-  </p>
+  <a href="https://github.com/zensu357/Android-nanobot/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/zensu357/Android-nanobot?style=flat-square" alt="License" />
+  </a>
+  <a href="https://github.com/zensu357/Android-nanobot/stargazers">
+    <img src="https://img.shields.io/github/stars/zensu357/Android-nanobot?style=flat-square" alt="Stars" />
+  </a>
+  <a href="https://github.com/zensu357/Android-nanobot/network/members">
+    <img src="https://img.shields.io/github/forks/zensu357/Android-nanobot?style=flat-square" alt="Forks" />
+  </a>
+  <a href="https://github.com/zensu357/Android-nanobot/issues">
+    <img src="https://img.shields.io/github/issues/zensu357/Android-nanobot?style=flat-square" alt="Issues" />
+  </a>
+  <a href="https://kotlinlang.org/">
+    <img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=flat-square&amp;logo=kotlin&amp;logoColor=white" alt="Kotlin" />
+  </a>
+  <a href="https://developer.android.com/">
+    <img src="https://img.shields.io/badge/Android-SDK%2035-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android" />
+  </a>
+</p>
+
+<p align="center">
+  <strong>Python nanobot agent 的 Android 原生复刻</strong>
+  <br />
+  项目聚焦在 Android 上复刻本地 agent 核心行为，而不是包装一个 Python 运行时。
+  <br />
+  <a href="./CURRENT_STATUS.zh-CN.md"><strong>当前状态</strong></a>
+  ·
+  <a href="./DEVELOPMENT_PROGRESS_AND_ROADMAP.zh-CN.md"><strong>路线图</strong></a>
+  ·
+  <a href="./README.md"><strong>English Docs</strong></a>
 </p>
 
 ## 目录
@@ -144,7 +157,7 @@ git clone https://github.com/zensu357/Android-nanobot.git
 
 ## 鸣谢
 
-- Python `nanobot`，作为设计参考目标
+- HKUDS 的 [`nanobot`](https://github.com/HKUDS/nanobot)，作为本项目的设计参考目标
 - Android Jetpack 与 Jetpack Compose
 - Room、WorkManager、Hilt、OkHttp 与 kotlinx.serialization
 
