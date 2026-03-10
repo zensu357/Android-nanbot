@@ -22,9 +22,9 @@
 </p>
 
 <p align="center">
-  <strong>Python nanobot agent 的 Android 原生复刻</strong>
+  <strong>HKUDS nanobot agent 的 Android 原生复刻</strong>
   <br />
-  项目聚焦在 Android 上复刻本地 agent 核心行为，而不是包装一个 Python 运行时。
+  项目聚焦在 Android 上复刻本地 agent 核心行为，而不是包装一个 Python 运行程序。
   <br />
   <a href="./CURRENT_STATUS.zh-CN.md"><strong>当前状态</strong></a>
   ·

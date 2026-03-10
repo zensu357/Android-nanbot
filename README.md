@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <strong>Android-native recreation of the Python nanobot agent</strong>
+  <strong>Android-native recreation of the HKUDS nanobot agent</strong>
   <br />
   Focused on matching the local agent core on Android rather than wrapping a Python runtime.
   <br />
