@@ -22,6 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.nanobot.core.model.MemoryFact
+import com.example.nanobot.core.model.MemorySummary
+import com.example.nanobot.core.model.toConfidencePercent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -80,9 +83,9 @@ fun MemoryScreen(
                         body = summary.summary,
                         updatedAt = summary.updatedAt,
                         metadata = if (summary.sessionId == state.currentSessionId) {
-                            "Current session • ${summary.sourceMessageCount} messages"
+                            buildSummaryMetadata(summary, currentSession = true)
                         } else {
-                            "${summary.sourceMessageCount} messages"
+                            buildSummaryMetadata(summary, currentSession = false)
                         },
                         actions = {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +126,7 @@ fun MemoryScreen(
                         },
                         body = fact.fact,
                         updatedAt = fact.updatedAt,
-                        metadata = fact.sourceSessionId?.let { "Session ${it.take(8)}" },
+                        metadata = buildFactMetadata(fact, state.currentSessionId),
                         actions = {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(onClick = { onEditFact(fact.id) }) {
@@ -165,6 +168,33 @@ fun MemoryScreen(
             }
         )
     }
+}
+
+private fun buildSummaryMetadata(summary: MemorySummary, currentSession: Boolean): String {
+    val parts = mutableListOf<String>()
+    if (currentSession) {
+        parts += "Current session"
+    }
+    parts += "${summary.sourceMessageCount} messages"
+    parts += "Confidence ${summary.confidence.toConfidencePercent()}%"
+    summary.provenance.messageIds.takeIf { it.isNotEmpty() }?.let { parts += "Evidence msgs ${it.joinToString(limit = 2)}" }
+    summary.provenance.evidenceExcerpt?.takeIf { it.isNotBlank() }?.let { parts += it.take(100) }
+    return parts.joinToString(" • ")
+}
+
+private fun buildFactMetadata(fact: MemoryFact, currentSessionId: String?): String {
+    val parts = mutableListOf<String>()
+    fact.sourceSessionId?.let { sessionId ->
+        parts += if (sessionId == currentSessionId) {
+            "Current session"
+        } else {
+            "Session ${sessionId.take(8)}"
+        }
+    }
+    parts += "Confidence ${fact.confidence.toConfidencePercent()}%"
+    fact.provenance.messageIds.takeIf { it.isNotEmpty() }?.let { parts += "Evidence msgs ${it.joinToString(limit = 2)}" }
+    fact.provenance.evidenceExcerpt?.takeIf { it.isNotBlank() }?.let { parts += it.take(100) }
+    return parts.joinToString(" • ")
 }
 
 @Composable

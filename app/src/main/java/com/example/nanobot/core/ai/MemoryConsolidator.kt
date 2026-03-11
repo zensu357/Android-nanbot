@@ -3,10 +3,13 @@ package com.example.nanobot.core.ai
 import com.example.nanobot.core.memory.MemoryFactGovernance
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.ChatMessage
+import com.example.nanobot.core.model.DEFAULT_MEMORY_CONFIDENCE
+import com.example.nanobot.core.model.MemoryCandidateFact
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.MemoryConsolidationResult
 import com.example.nanobot.core.model.MemoryFact
+import com.example.nanobot.core.model.MemoryProvenance
 import com.example.nanobot.core.model.MemorySummary
 import com.example.nanobot.domain.repository.ChatRepository
 import com.example.nanobot.domain.repository.MemoryRepository
@@ -88,38 +91,38 @@ class MemoryConsolidator @Inject constructor(
             sessionId = sessionId,
             messageCount = history.size,
             result = result,
-            existingFacts = existingFacts
+            existingFacts = existingFacts,
+            history = boundedHistory
         )
         return true
     }
 
     suspend fun buildMemoryContext(sessionId: String): String? {
-        val summary = memoryRepository.getSummaryForSession(sessionId)?.summary
-        val sessionFacts = memoryRepository.getFactsForSession(sessionId).take(3).map { it.fact }
+        val summary = memoryRepository.getSummaryForSession(sessionId)
+        val sessionFacts = memoryRepository.getFactsForSession(sessionId).take(3)
         val longTermFacts = memoryRepository.getFacts()
             .filter { it.sourceSessionId != sessionId }
             .take(5)
-            .map { it.fact }
 
-        if (summary.isNullOrBlank() && sessionFacts.isEmpty() && longTermFacts.isEmpty()) {
+        if (summary == null && sessionFacts.isEmpty() && longTermFacts.isEmpty()) {
             return null
         }
 
         return buildString {
             appendLine("[Memory]")
-            if (!summary.isNullOrBlank()) {
+            if (summary != null) {
                 appendLine("Session summary:")
-                appendLine(summary)
+                appendLine(formatSummaryForContext(summary))
             }
             if (sessionFacts.isNotEmpty()) {
                 appendLine()
                 appendLine("Current session facts:")
-                sessionFacts.forEach { appendLine("- $it") }
+                sessionFacts.forEach { appendLine("- ${formatFactForContext(it)}") }
             }
             if (longTermFacts.isNotEmpty()) {
                 appendLine()
                 appendLine("Long-term user facts:")
-                longTermFacts.forEach { appendLine("- $it") }
+                longTermFacts.forEach { appendLine("- ${formatFactForContext(it)}") }
             }
         }.trim()
     }
@@ -132,7 +135,8 @@ class MemoryConsolidator @Inject constructor(
         sessionId: String,
         messageCount: Int,
         result: MemoryConsolidationResult,
-        existingFacts: List<MemoryFact>
+        existingFacts: List<MemoryFact>,
+        history: List<ChatMessage>
     ) {
         if (result.updatedSummary.isNotBlank()) {
             memoryRepository.upsertSummary(
@@ -140,7 +144,15 @@ class MemoryConsolidator @Inject constructor(
                     sessionId = sessionId,
                     summary = result.updatedSummary.trim(),
                     updatedAt = System.currentTimeMillis(),
-                    sourceMessageCount = messageCount
+                    sourceMessageCount = messageCount,
+                    confidence = normalizeConfidence(result.summaryConfidence),
+                    provenance = MemoryProvenance(
+                        messageIds = filterKnownMessageIds(result.summarySourceMessageIds, history),
+                        evidenceExcerpt = result.summaryEvidenceExcerpt?.trim()?.takeIf { it.isNotBlank() }?.take(240)
+                            ?: history.lastMeaningfulExcerpt(),
+                        sourceKind = "conversation_summary",
+                        extractor = "llm_memory_consolidator"
+                    )
                 )
             )
         }
@@ -148,10 +160,12 @@ class MemoryConsolidator @Inject constructor(
         val now = System.currentTimeMillis()
         val mutableFacts = existingFacts.toMutableList()
         val existingByNormalized = existingFacts.associateBy { normalizeFact(it.fact) }.toMutableMap()
-        result.candidateFacts
-            .map { it.trim() }
-            .filter { it.length >= 8 }
-            .forEach { fact ->
+        val candidateFacts = buildCandidateFacts(result, history)
+        candidateFacts
+            .map { candidate -> candidate.copy(fact = candidate.fact.trim()) }
+            .filter { candidate -> candidate.fact.length >= 8 }
+            .forEach { candidate ->
+                val fact = candidate.fact
                 val normalized = normalizeFact(fact)
                 if (normalized.isBlank()) return@forEach
 
@@ -161,7 +175,15 @@ class MemoryConsolidator @Inject constructor(
                     val updatedFact = existing.copy(
                         fact = fact.take(220),
                         sourceSessionId = sessionId,
-                        updatedAt = now
+                        updatedAt = now,
+                        confidence = normalizeConfidence(candidate.confidence),
+                        provenance = MemoryProvenance(
+                            messageIds = filterKnownMessageIds(candidate.sourceMessageIds, history),
+                            evidenceExcerpt = candidate.evidenceExcerpt?.trim()?.takeIf { it.isNotBlank() }?.take(240)
+                                ?: history.lastMeaningfulExcerpt(),
+                            sourceKind = "conversation_fact",
+                            extractor = "llm_memory_consolidator"
+                        )
                     )
                     mutableFacts.removeAll { it.id == existing.id }
                     mutableFacts += updatedFact
@@ -174,7 +196,15 @@ class MemoryConsolidator @Inject constructor(
                         fact = fact.take(220),
                         sourceSessionId = sessionId,
                         createdAt = now,
-                        updatedAt = now
+                        updatedAt = now,
+                        confidence = normalizeConfidence(candidate.confidence),
+                        provenance = MemoryProvenance(
+                            messageIds = filterKnownMessageIds(candidate.sourceMessageIds, history),
+                            evidenceExcerpt = candidate.evidenceExcerpt?.trim()?.takeIf { it.isNotBlank() }?.take(240)
+                                ?: history.lastMeaningfulExcerpt(),
+                            sourceKind = "conversation_fact",
+                            extractor = "llm_memory_consolidator"
+                        )
                     )
                     mutableFacts += newFact
                     existingByNormalized[normalized] = newFact
@@ -192,7 +222,65 @@ class MemoryConsolidator @Inject constructor(
         }.getOrNull()
     }
 
+    private fun buildCandidateFacts(
+        result: MemoryConsolidationResult,
+        history: List<ChatMessage>
+    ): List<MemoryCandidateFact> {
+        val structured = result.structuredFacts
+            .mapNotNull { candidate -> candidate.fact.takeIf { it.isNotBlank() }?.let { candidate.copy(fact = it) } }
+        if (structured.isNotEmpty()) return structured
+        return result.candidateFacts.map { fact ->
+            MemoryCandidateFact(
+                fact = fact,
+                confidence = inferFallbackConfidence(fact, history),
+                evidenceExcerpt = history.lastMeaningfulExcerpt(),
+                sourceMessageIds = history.takeLast(2).map { it.id }
+            )
+        }
+    }
+
+    private fun inferFallbackConfidence(fact: String, history: List<ChatMessage>): Float {
+        val normalizedFact = normalizeFact(fact)
+        val supportCount = history.count { message ->
+            val content = message.content.orEmpty().lowercase()
+            normalizedFact.split(' ').count { token -> token.length >= 4 && token in content } >= 2
+        }
+        return when {
+            supportCount >= 2 -> 0.8f
+            supportCount == 1 -> 0.65f
+            else -> DEFAULT_MEMORY_CONFIDENCE
+        }
+    }
+
+    private fun filterKnownMessageIds(candidateIds: List<String>, history: List<ChatMessage>): List<String> {
+        val knownIds = history.map { it.id }.toSet()
+        return candidateIds.filter { it in knownIds }
+    }
+
+    private fun normalizeConfidence(value: Float): Float = value.coerceIn(0f, 1f)
+
     private fun normalizeFact(value: String): String = value.trim().lowercase()
+
+    private fun formatFactForContext(fact: MemoryFact): String {
+        val confidence = "confidence=${fact.confidence}"
+        val provenance = fact.provenance.evidenceExcerpt?.let { "evidence=$it" } ?: "evidence=(none)"
+        return "${fact.fact} [$confidence, $provenance]"
+    }
+
+    private fun formatSummaryForContext(summary: MemorySummary): String {
+        val confidence = "confidence=${summary.confidence}"
+        val provenance = summary.provenance.evidenceExcerpt?.let { "evidence=$it" } ?: "evidence=(none)"
+        return "${summary.summary} [$confidence, $provenance]"
+    }
+
+    private fun List<ChatMessage>.lastMeaningfulExcerpt(): String? {
+        return asReversed()
+            .firstOrNull { !it.content.isNullOrBlank() }
+            ?.content
+            ?.trim()
+            ?.take(240)
+            ?.takeIf { it.isNotBlank() }
+    }
 
     private companion object {
         const val MAX_MEMORY_FACTS = 200

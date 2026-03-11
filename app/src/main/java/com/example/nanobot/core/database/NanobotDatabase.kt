@@ -15,7 +15,7 @@ import com.example.nanobot.core.database.entity.SessionEntity
 
 @Database(
     entities = [SessionEntity::class, MessageEntity::class, MemoryFactEntity::class, MemorySummaryEntity::class, ReminderEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class NanobotDatabase : RoomDatabase() {

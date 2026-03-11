@@ -1,5 +1,6 @@
 package com.example.nanobot.core.ai.provider
 
+import com.example.nanobot.core.attachments.AttachmentStore
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
@@ -24,15 +25,19 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class AzureOpenAiProvider @Inject constructor(
-    private val requestSanitizer: ProviderRequestSanitizer
+    private val requestSanitizer: ProviderRequestSanitizer,
+    private val attachmentStore: AttachmentStore
 ) {
     suspend fun completeChat(
         config: AgentConfig,
         route: ResolvedProviderRoute,
         request: LlmChatRequest
     ): ProviderChatResult = withContext(Dispatchers.IO) {
+        val multimodalRequest = request.copy(
+            messages = request.messages.map { it.withResolvedAttachments(attachmentStore) }
+        )
         val sanitizedRequest = requestSanitizer.sanitize(
-            request.copy(
+            multimodalRequest.copy(
                 model = route.resolvedModel,
                 temperature = route.resolvedTemperature
             )

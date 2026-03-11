@@ -18,5 +18,8 @@ data class McpRefreshResult(
     val enabledServerCount: Int,
     val discoveredToolCount: Int,
     val retainedToolCount: Int = 0,
-    val errors: List<String> = emptyList()
+    val errors: List<String> = emptyList(),
+    val healthyServerCount: Int = 0,
+    val degradedServerCount: Int = 0,
+    val unhealthyServerCount: Int = 0
 )

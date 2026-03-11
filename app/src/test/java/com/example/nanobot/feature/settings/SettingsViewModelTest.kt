@@ -3,6 +3,7 @@
 package com.example.nanobot.feature.settings
 
 import com.example.nanobot.core.ai.PromptPresetCatalog
+import com.example.nanobot.core.mcp.McpAuthType
 import com.example.nanobot.core.mcp.McpRefreshResult
 import com.example.nanobot.core.mcp.McpRegistry
 import com.example.nanobot.core.mcp.McpServerDefinition
@@ -105,6 +106,42 @@ class SettingsViewModelTest {
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.isSaving)
+    }
+
+    @Test
+    fun addMcpServerPersistsHardeningFieldsIntoDraft() = runSettingsTest {
+        val viewModel = createViewModel(
+            FakeSettingsConfigStore(AgentConfig()),
+            FakeHeartbeatRepository(),
+            FakeMcpRegistry(),
+            FakeWorkerScheduler()
+        )
+
+        advanceUntilIdle()
+        viewModel.onDraftMcpLabelChanged("GitHub")
+        viewModel.onDraftMcpEndpointChanged("https://mcp.example/github")
+        viewModel.onDraftMcpAuthTypeChanged(McpAuthType.BEARER)
+        viewModel.onDraftMcpAuthTokenChanged("secret")
+        viewModel.onDraftMcpConnectTimeoutChanged("10")
+        viewModel.onDraftMcpReadTimeoutChanged("20")
+        viewModel.onDraftMcpWriteTimeoutChanged("15")
+        viewModel.onDraftMcpCallTimeoutChanged("25")
+        viewModel.onDraftMcpMaxRetriesChanged("4")
+        viewModel.onDraftMcpBackoffBaseMsChanged("750")
+
+        viewModel.addMcpServer()
+        advanceUntilIdle()
+
+        val server = viewModel.uiState.value.mcpServers.single()
+        assertEquals(McpAuthType.BEARER, server.authType)
+        assertEquals("secret", server.authToken)
+        assertEquals("10", server.connectTimeoutSeconds)
+        assertEquals("20", server.readTimeoutSeconds)
+        assertEquals("15", server.writeTimeoutSeconds)
+        assertEquals("25", server.callTimeoutSeconds)
+        assertEquals("4", server.maxRetries)
+        assertEquals("750", server.backoffBaseMs)
+        assertEquals(McpAuthType.NONE, viewModel.uiState.value.draftMcpAuthType)
     }
 
     private fun runSettingsTest(block: suspend kotlinx.coroutines.test.TestScope.() -> Unit) {

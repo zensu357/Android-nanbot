@@ -58,6 +58,8 @@ class McpRegistryTest {
         assertEquals(1, tools.size)
         assertEquals("found 3 issues", result)
         assertEquals("issue-search", client.lastRemoteToolName)
+        assertEquals(1, refresh.healthyServerCount)
+        assertEquals(McpHealthStatus.HEALTHY, store.getServersSnapshot().single().health.status)
     }
 
     @Test
@@ -88,6 +90,8 @@ class McpRegistryTest {
         assertEquals(0, refresh.discoveredToolCount)
         assertEquals(0, refresh.retainedToolCount)
         assertTrue(refresh.errors.single().contains("unsupported input schema"))
+        assertEquals(1, refresh.degradedServerCount)
+        assertEquals(McpHealthStatus.DEGRADED, store.getServersSnapshot().single().health.status)
     }
 
     @Test
@@ -130,6 +134,48 @@ class McpRegistryTest {
         assertEquals(1, refresh.retainedToolCount)
         assertEquals(listOf(cachedTool), tools)
         assertTrue(refresh.errors.single().contains("temporary outage"))
+        assertEquals(1, store.getServersSnapshot().single().health.consecutiveFailures)
+    }
+
+    @Test
+    fun callToolFailureMarksServerHealth() = runTest {
+        val store = FakeMcpServerStore(
+            servers = listOf(
+                McpServerDefinition(
+                    id = "github",
+                    label = "GitHub",
+                    endpoint = "https://mcp.example/github",
+                    enabled = true
+                )
+            ),
+            tools = listOf(
+                McpToolDescriptor(
+                    serverId = "github",
+                    serverLabel = "GitHub",
+                    name = "issue_search",
+                    remoteName = "issue-search",
+                    description = "Search issues",
+                    inputSchema = buildJsonObject { put("type", "object") },
+                    readOnlyHint = true
+                )
+            )
+        )
+        val client = object : McpClient {
+            override suspend fun discoverTools(server: McpServerDefinition): List<McpToolDescriptor> = emptyList()
+
+            override suspend fun callTool(server: McpServerDefinition, remoteToolName: String, arguments: JsonObject): String {
+                throw IllegalStateException("tool call failed")
+            }
+        }
+        val registry = McpRegistryImpl(store, client)
+
+        val failure = runCatching {
+            registry.callTool("mcp.github.issue_search", buildJsonObject {})
+        }
+
+        assertTrue(failure.isFailure)
+        assertEquals(McpHealthStatus.DEGRADED, store.getServersSnapshot().single().health.status)
+        assertEquals("tool call failed", store.getServersSnapshot().single().health.lastError)
     }
 
     private class FakeMcpClient(

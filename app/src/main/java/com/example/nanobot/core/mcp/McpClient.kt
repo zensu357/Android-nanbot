@@ -3,6 +3,7 @@ package com.example.nanobot.core.mcp
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -20,7 +21,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
 import java.net.URI
+import java.util.concurrent.TimeUnit
 
 interface McpClient {
     suspend fun discoverTools(server: McpServerDefinition): List<McpToolDescriptor>
@@ -34,15 +37,11 @@ class HttpMcpClient @Inject constructor() : McpClient {
         explicitNulls = false
     }
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
+    private val baseHttpClient = OkHttpClient.Builder().build()
 
     override suspend fun discoverTools(server: McpServerDefinition): List<McpToolDescriptor> = withContext(Dispatchers.IO) {
         validateEndpoint(server)
-        val response = postJson(server.endpoint, buildRequestPayload("tools/list", buildJsonObject {}))
+        val response = postJson(server, buildRequestPayload("tools/list", buildJsonObject {}))
         val result = response["result"]?.jsonObject
             ?: throw IllegalStateException("MCP tools/list response was missing result.")
         val tools = result["tools"]?.jsonArray.orEmpty()
@@ -55,7 +54,7 @@ class HttpMcpClient @Inject constructor() : McpClient {
     override suspend fun callTool(server: McpServerDefinition, remoteToolName: String, arguments: JsonObject): String = withContext(Dispatchers.IO) {
         validateEndpoint(server)
         val response = postJson(
-            server.endpoint,
+            server,
             buildRequestPayload(
                 method = "tools/call",
                 params = buildJsonObject {
@@ -125,20 +124,70 @@ class HttpMcpClient @Inject constructor() : McpClient {
             .trim('_')
     }
 
-    private fun postJson(endpoint: String, payload: JsonObject): JsonObject {
-        val request = Request.Builder()
-            .url(endpoint)
+    private suspend fun postJson(server: McpServerDefinition, payload: JsonObject): JsonObject {
+        var attempt = 0
+        var lastError: Throwable? = null
+
+        while (attempt <= server.maxRetries) {
+            try {
+                return executePostJson(server, payload)
+            } catch (throwable: Throwable) {
+                lastError = throwable
+                val shouldRetry = (throwable is RetryableMcpException || throwable is IOException) && attempt < server.maxRetries
+                if (!shouldRetry) throw throwable
+                delay(computeBackoffDelayMs(attempt, server.backoffBaseMs))
+                attempt += 1
+            }
+        }
+
+        throw lastError ?: IllegalStateException("MCP request failed.")
+    }
+
+    private fun executePostJson(server: McpServerDefinition, payload: JsonObject): JsonObject {
+        val requestBuilder = Request.Builder()
+            .url(server.endpoint)
             .post(json.encodeToString(JsonObject.serializer(), payload).toRequestBody(JSON_MEDIA_TYPE))
             .header("Content-Type", "application/json")
-            .build()
+        applyAuth(requestBuilder, server)
 
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IllegalStateException("MCP request failed with HTTP ${response.code}.")
-            }
+        clientFor(server).newCall(requestBuilder.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
-            return json.parseToJsonElement(body).jsonObject
+            if (!response.isSuccessful) {
+                val message = "MCP request failed with HTTP ${response.code}."
+                if (response.code == 408 || response.code == 429 || response.code in 500..599) {
+                    throw RetryableMcpException(message)
+                }
+                throw IllegalStateException(message)
+            }
+            if (body.isBlank()) {
+                throw IllegalStateException("MCP response body was empty.")
+            }
+            return runCatching { json.parseToJsonElement(body).jsonObject }
+                .getOrElse { throw IllegalStateException("MCP response was not valid JSON.", it) }
         }
+    }
+
+    private fun clientFor(server: McpServerDefinition): OkHttpClient {
+        return baseHttpClient.newBuilder()
+            .connectTimeout(server.connectTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .readTimeout(server.readTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .writeTimeout(server.writeTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .callTimeout(server.callTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .build()
+    }
+
+    private fun applyAuth(requestBuilder: Request.Builder, server: McpServerDefinition) {
+        when (server.auth.type) {
+            McpAuthType.NONE -> Unit
+            McpAuthType.BEARER -> requestBuilder.header("Authorization", "Bearer ${server.auth.token.trim()}")
+            McpAuthType.HEADER -> requestBuilder.header(server.auth.headerName.trim(), server.auth.headerValue)
+        }
+    }
+
+    private fun computeBackoffDelayMs(attempt: Int, baseDelayMs: Long): Long {
+        if (baseDelayMs <= 0L) return 0L
+        val multiplier = 1L shl attempt.coerceAtMost(10)
+        return (baseDelayMs * multiplier).coerceAtMost(MAX_BACKOFF_DELAY_MS)
     }
 
     private fun buildRequestPayload(method: String, params: JsonObject): JsonObject = buildJsonObject {
@@ -150,6 +199,7 @@ class HttpMcpClient @Inject constructor() : McpClient {
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
+        const val MAX_BACKOFF_DELAY_MS = 10_000L
     }
 
     private fun validateEndpoint(server: McpServerDefinition) {
@@ -164,5 +214,42 @@ class HttpMcpClient @Inject constructor() : McpClient {
         require(!uri.host.isNullOrBlank()) {
             "${server.label}: endpoint must include a host."
         }
+        require(server.connectTimeoutSeconds > 0) {
+            "${server.label}: connect timeout must be greater than 0 seconds."
+        }
+        require(server.readTimeoutSeconds > 0) {
+            "${server.label}: read timeout must be greater than 0 seconds."
+        }
+        require(server.writeTimeoutSeconds > 0) {
+            "${server.label}: write timeout must be greater than 0 seconds."
+        }
+        require(server.callTimeoutSeconds > 0) {
+            "${server.label}: call timeout must be greater than 0 seconds."
+        }
+        require(server.maxRetries >= 0) {
+            "${server.label}: max retries cannot be negative."
+        }
+        require(server.backoffBaseMs >= 0) {
+            "${server.label}: backoff delay cannot be negative."
+        }
+        when (server.auth.type) {
+            McpAuthType.NONE -> Unit
+            McpAuthType.BEARER -> require(server.auth.token.isNotBlank()) {
+                "${server.label}: bearer token is required when bearer auth is enabled."
+            }
+            McpAuthType.HEADER -> {
+                require(server.auth.headerName.isNotBlank()) {
+                    "${server.label}: header name is required when header auth is enabled."
+                }
+                require(server.auth.headerValue.isNotBlank()) {
+                    "${server.label}: header value is required when header auth is enabled."
+                }
+            }
+        }
     }
 }
+
+private class RetryableMcpException(
+    message: String,
+    cause: Throwable? = null
+) : IOException(message, cause)

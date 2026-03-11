@@ -3,7 +3,6 @@ package com.example.nanobot.core.ai.provider
 import com.example.nanobot.core.attachments.AttachmentStore
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.LlmChatRequest
-import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.ProviderChatResult
 import com.example.nanobot.core.model.ToolCallRequest
 import com.example.nanobot.core.network.api.LlmApi
@@ -13,15 +12,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -112,36 +107,6 @@ class OpenAiCompatibleProvider @Inject constructor(
             .build()
             .create(LlmApi::class.java)
     }
-}
-
-private suspend fun LlmMessageDto.withResolvedAttachments(
-    attachmentStore: AttachmentStore
-): LlmMessageDto {
-    if (attachments.isEmpty()) return this
-
-    val textContent = content?.jsonPrimitiveOrNull().orEmpty()
-    val parts = buildJsonArray {
-        if (textContent.isNotBlank()) {
-            add(buildJsonObject {
-                put("type", "text")
-                put("text", textContent)
-            })
-        }
-        attachments.forEach { attachment ->
-            val dataUrl = attachment.dataUrl ?: attachmentStore.buildDataUrl(
-                localPath = attachment.localPath,
-                mimeType = attachment.mimeType
-            )
-            add(buildJsonObject {
-                put("type", "image_url")
-                putJsonObject("image_url") {
-                    put("url", dataUrl)
-                }
-            })
-        }
-    }
-
-    return copy(content = JsonArray(parts), attachments = attachments)
 }
 
 private fun String.cleanCustomBaseUrl(): String {

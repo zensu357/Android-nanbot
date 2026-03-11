@@ -41,7 +41,8 @@ class MemoryViewModelTest {
                     fact = "The user prefers Kotlin.",
                     sourceSessionId = "session-1",
                     createdAt = 1L,
-                    updatedAt = 2L
+                    updatedAt = 2L,
+                    confidence = 0.8f
                 )
             )
         )
@@ -56,6 +57,7 @@ class MemoryViewModelTest {
         advanceUntilIdle()
 
         assertEquals("The user prefers Java.", memoryRepository.facts.value.single().fact)
+        assertEquals(0.8f, memoryRepository.facts.value.single().confidence)
         assertNull(viewModel.uiState.value.editor)
         collectionJob.cancel()
     }
@@ -69,7 +71,8 @@ class MemoryViewModelTest {
                     fact = "The user prefers Kotlin.",
                     sourceSessionId = "session-1",
                     createdAt = 1L,
-                    updatedAt = 2L
+                    updatedAt = 2L,
+                    confidence = 0.8f
                 )
             )
         )
@@ -97,7 +100,8 @@ class MemoryViewModelTest {
                     sessionId = "session-1",
                     summary = "Existing summary",
                     updatedAt = 5L,
-                    sourceMessageCount = 4
+                    sourceMessageCount = 4,
+                    confidence = 0.7f
                 )
             )
         )

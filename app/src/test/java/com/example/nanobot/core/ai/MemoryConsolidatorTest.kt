@@ -78,10 +78,10 @@ class MemoryConsolidatorTest {
         val result = consolidator.consolidate(
             sessionId = "session-1",
             history = listOf(
-                ChatMessage(sessionId = "session-1", role = MessageRole.USER, content = "I am building an Android assistant."),
-                ChatMessage(sessionId = "session-1", role = MessageRole.ASSISTANT, content = "Nice."),
-                ChatMessage(sessionId = "session-1", role = MessageRole.USER, content = "Please remember that I prefer Kotlin."),
-                ChatMessage(sessionId = "session-1", role = MessageRole.ASSISTANT, content = "Understood.")
+                ChatMessage(id = "msg-1", sessionId = "session-1", role = MessageRole.USER, content = "I am building an Android assistant."),
+                ChatMessage(id = "msg-2", sessionId = "session-1", role = MessageRole.ASSISTANT, content = "Nice."),
+                ChatMessage(id = "msg-3", sessionId = "session-1", role = MessageRole.USER, content = "Please remember that I prefer Kotlin."),
+                ChatMessage(id = "msg-4", sessionId = "session-1", role = MessageRole.ASSISTANT, content = "Understood.")
             ),
             config = AgentConfig(enableMemory = true)
         )
@@ -90,6 +90,9 @@ class MemoryConsolidatorTest {
         assertNotNull(repository.summary)
         assertTrue(repository.summary!!.summary.contains("Android assistant"))
         assertEquals("The user is building an Android assistant.", repository.facts.single().fact)
+        assertEquals(65, (repository.facts.single().confidence * 100).toInt())
+        assertTrue(repository.facts.single().provenance.messageIds.isNotEmpty())
+        assertTrue(repository.summary!!.provenance.evidenceExcerpt.orEmpty().isNotBlank())
     }
 
     @Test
@@ -106,14 +109,16 @@ class MemoryConsolidatorTest {
                 fact = "The user prefers Kotlin.",
                 sourceSessionId = "session-1",
                 createdAt = 1L,
-                updatedAt = 10L
+                updatedAt = 10L,
+                confidence = 0.82f
             )
             facts += MemoryFact(
                 id = "fact-2",
                 fact = "The user likes concise answers.",
                 sourceSessionId = "session-2",
                 createdAt = 2L,
-                updatedAt = 20L
+                updatedAt = 20L,
+                confidence = 0.74f
             )
         }
         val consolidator = MemoryConsolidator(
@@ -130,6 +135,7 @@ class MemoryConsolidatorTest {
         assertTrue(context.contains("Long-term user facts:"))
         assertTrue(context.contains("The user prefers Kotlin."))
         assertTrue(context.contains("The user likes concise answers."))
+        assertTrue(context.contains("confidence="))
     }
 
     @Test
@@ -204,6 +210,50 @@ class MemoryConsolidatorTest {
         assertEquals("session-2", repository.facts.single().sourceSessionId)
     }
 
+    @Test
+    fun consolidateUsesStructuredExplainabilityMetadataWhenProvided() = runTest {
+        val repository = FakeMemoryRepository()
+        val consolidator = MemoryConsolidator(
+            memoryRepository = repository,
+            chatRepository = ParameterizedChatRepository(
+                """
+                    {
+                      "updatedSummary":"The user is evaluating Kotlin for Android work.",
+                      "summaryConfidence":0.91,
+                      "summaryEvidenceExcerpt":"I am building an Android assistant and I prefer Kotlin.",
+                      "summarySourceMessageIds":["msg-1","msg-3"],
+                      "structuredFacts":[
+                        {
+                          "fact":"The user prefers Kotlin.",
+                          "confidence":0.88,
+                          "evidenceExcerpt":"Please remember that I prefer Kotlin.",
+                          "sourceMessageIds":["msg-3"]
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            ),
+            memoryPromptBuilder = MemoryPromptBuilder()
+        )
+
+        val result = consolidator.consolidate(
+            sessionId = "session-1",
+            history = listOf(
+                ChatMessage(id = "msg-1", sessionId = "session-1", role = MessageRole.USER, content = "I am building an Android assistant."),
+                ChatMessage(id = "msg-2", sessionId = "session-1", role = MessageRole.ASSISTANT, content = "Nice."),
+                ChatMessage(id = "msg-3", sessionId = "session-1", role = MessageRole.USER, content = "Please remember that I prefer Kotlin."),
+                ChatMessage(id = "msg-4", sessionId = "session-1", role = MessageRole.ASSISTANT, content = "Understood.")
+            ),
+            config = AgentConfig(enableMemory = true)
+        )
+
+        assertTrue(result)
+        assertEquals(0.91f, repository.summary!!.confidence)
+        assertEquals(listOf("msg-1", "msg-3"), repository.summary!!.provenance.messageIds)
+        assertEquals(0.88f, repository.facts.single().confidence)
+        assertEquals(listOf("msg-3"), repository.facts.single().provenance.messageIds)
+    }
+
     private class FakeMemoryRepository : MemoryRepository {
         val facts = mutableListOf<MemoryFact>()
         var summary: MemorySummary? = null
@@ -245,7 +295,7 @@ class MemoryConsolidatorTest {
         override suspend fun completeChat(request: LlmChatRequest, config: AgentConfig): ProviderChatResult {
             return ProviderChatResult(
                 content = """
-                    {"updatedSummary":"The user is building an Android assistant and prefers Kotlin.","candidateFacts":["The user is building an Android assistant."]}
+                    {"updatedSummary":"The user is building an Android assistant and prefers Kotlin.","summaryConfidence":0.75,"summaryEvidenceExcerpt":"I am building an Android assistant.","summarySourceMessageIds":["msg-1","msg-3"],"candidateFacts":["The user is building an Android assistant."]}
                 """.trimIndent()
             )
         }

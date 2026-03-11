@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class AttachmentType {
-    IMAGE
+    IMAGE,
+    FILE
 }
 
 @Serializable

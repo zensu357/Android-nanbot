@@ -1,4 +1,4 @@
-﻿import java.util.Properties
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -30,7 +30,7 @@ android {
         applicationId = "com.example.nanobot"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
+        versionCode = 4
         versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

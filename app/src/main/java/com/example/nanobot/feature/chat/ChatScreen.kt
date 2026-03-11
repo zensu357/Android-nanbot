@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +43,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +62,7 @@ fun ChatScreen(
     state: ChatUiState,
     onMessageChange: (String) -> Unit,
     onAttachImage: (Uri) -> Unit,
+    onAttachFile: (Uri) -> Unit,
     onRemovePendingAttachment: (String) -> Unit,
     onSendClick: () -> Unit,
     onCancelClick: () -> Unit,
@@ -67,6 +74,14 @@ fun ChatScreen(
     ) { uri ->
         uri?.let(onAttachImage)
     }
+
+    val fileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let(onAttachFile)
+    }
+
+    var showAttachMenu by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
 
@@ -173,14 +188,33 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
-                IconButton(
-                    onClick = {
-                        pickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    },
-                    enabled = !state.isRunning && !state.isSending,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Attach Image")
+                Box {
+                    IconButton(
+                        onClick = { showAttachMenu = true },
+                        enabled = !state.isRunning && !state.isSending,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "Attach")
+                    }
+                    DropdownMenu(
+                        expanded = showAttachMenu,
+                        onDismissRequest = { showAttachMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Image") },
+                            onClick = {
+                                showAttachMenu = false
+                                pickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("File") },
+                            onClick = {
+                                showAttachMenu = false
+                                fileLauncher.launch(arrayOf("*/*"))
+                            }
+                        )
+                    }
                 }
 
                 OutlinedTextField(
@@ -291,6 +325,7 @@ private fun AttachmentChip(
 private fun AttachmentSummary(attachment: Attachment) {
     val typeLabel = when (attachment.type) {
         AttachmentType.IMAGE -> "Image"
+        AttachmentType.FILE -> "File"
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,

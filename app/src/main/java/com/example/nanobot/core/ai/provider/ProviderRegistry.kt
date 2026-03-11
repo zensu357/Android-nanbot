@@ -40,7 +40,8 @@ object ProviderRegistry {
             name = "azure_openai",
             keywords = setOf("azure", "azure-openai"),
             displayName = "Azure OpenAI",
-            providerType = ProviderType.AZURE_OPENAI
+            providerType = ProviderType.AZURE_OPENAI,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "openrouter",
@@ -53,7 +54,7 @@ object ProviderRegistry {
             defaultBaseUrl = "https://openrouter.ai/api/v1",
             supportsPromptCaching = true,
             requiresOpenAiChatEndpoint = true,
-            supportsImageAttachments = false
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "aihubmix",
@@ -64,7 +65,8 @@ object ProviderRegistry {
             detectByBaseKeyword = "aihubmix",
             defaultBaseUrl = "https://aihubmix.com/v1",
             stripLeadingProviderPrefix = true,
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "siliconflow",
@@ -74,7 +76,8 @@ object ProviderRegistry {
             isGateway = true,
             detectByBaseKeyword = "siliconflow",
             defaultBaseUrl = "https://api.siliconflow.cn/v1",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "volcengine",
@@ -84,7 +87,8 @@ object ProviderRegistry {
             isGateway = true,
             detectByBaseKeyword = "volces",
             defaultBaseUrl = "https://ark.cn-beijing.volces.com/api/v3",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "anthropic",
@@ -104,25 +108,29 @@ object ProviderRegistry {
             name = "deepseek",
             keywords = setOf("deepseek"),
             displayName = "DeepSeek",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "gemini",
             keywords = setOf("gemini"),
             displayName = "Gemini",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "zhipu",
             keywords = setOf("zhipu", "glm", "zai"),
             displayName = "Zhipu AI",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "dashscope",
             keywords = setOf("qwen", "dashscope"),
             displayName = "DashScope",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "moonshot",
@@ -137,19 +145,22 @@ object ProviderRegistry {
             keywords = setOf("minimax"),
             displayName = "MiniMax",
             defaultBaseUrl = "https://api.minimax.io/v1",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "vllm",
             keywords = setOf("vllm"),
             displayName = "vLLM/Local",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         ),
         ProviderSpec(
             name = "groq",
             keywords = setOf("groq"),
             displayName = "Groq",
-            requiresOpenAiChatEndpoint = true
+            requiresOpenAiChatEndpoint = true,
+            supportsImageAttachments = true
         )
     )
 

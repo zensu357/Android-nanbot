@@ -51,6 +51,40 @@ class AttachmentStore @Inject constructor(
         )
     }
 
+    private val maxFileSizeBytes = 10_000_000L
+
+    suspend fun importFile(uri: Uri): Attachment = withContext(Dispatchers.IO) {
+        val mimeType = context.contentResolver.getType(uri).orEmpty().ifBlank { "application/octet-stream" }
+        val metadata = queryMetadata(uri)
+        val extension = metadata.displayName?.substringAfterLast('.', "")
+            ?.ifBlank { mimeType.substringAfter('/', "bin").substringBefore(';') }
+            ?: mimeType.substringAfter('/', "bin").substringBefore(';')
+        val fileName = "${UUID.randomUUID()}.$extension"
+        val relativePath = "attachments/files/$fileName"
+        val destination = File(context.filesDir, relativePath).apply {
+            parentFile?.mkdirs()
+        }
+
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            destination.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw IllegalArgumentException("Unable to read the selected file.")
+
+        val sizeBytes = destination.length()
+        require(sizeBytes in 1..maxFileSizeBytes) {
+            "File is too large (${sizeBytes} bytes). Maximum file size is ${maxFileSizeBytes / 1_000_000} MB."
+        }
+
+        Attachment(
+            type = AttachmentType.FILE,
+            displayName = metadata.displayName ?: destination.name,
+            mimeType = mimeType,
+            sizeBytes = sizeBytes,
+            localPath = relativePath
+        )
+    }
+
     fun resolveFile(localPath: String): File = File(context.filesDir, localPath)
 
     suspend fun buildDataUrl(localPath: String, mimeType: String, maxBytes: Long = maxPreparedBytes): String = withContext(Dispatchers.IO) {
@@ -66,6 +100,15 @@ class AttachmentStore @Inject constructor(
         }
         val encoded = Base64.encodeToString(preparedBytes, Base64.NO_WRAP)
         "data:$mimeType;base64,$encoded"
+    }
+
+    suspend fun readFileAsText(localPath: String): String = withContext(Dispatchers.IO) {
+        val file = resolveFile(localPath)
+        require(file.exists()) { "Attachment file is missing: $localPath" }
+        require(file.length() in 1..maxFileSizeBytes) {
+            "Attachment '$localPath' is too large to read as text."
+        }
+        file.readText()
     }
 
     private fun prepareImageBytes(file: File, mimeType: String, maxBytes: Long): ByteArray {

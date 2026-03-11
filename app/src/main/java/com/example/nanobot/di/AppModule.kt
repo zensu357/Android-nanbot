@@ -81,7 +81,7 @@ object AppModule {
             context,
             NanobotDatabase::class.java,
             "nanobot.db"
-        ).build()
+        ).fallbackToDestructiveMigration().build()
 
     @Provides
     @Singleton

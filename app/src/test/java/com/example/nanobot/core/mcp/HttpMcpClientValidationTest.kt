@@ -39,4 +39,38 @@ class HttpMcpClientValidationTest {
 
         assertTrue(error.message.orEmpty().contains("http/https"))
     }
+
+    @Test
+    fun discoverRejectsBearerAuthWithoutToken() = runTest {
+        val error = assertFailsWith<IllegalArgumentException> {
+            client.discoverTools(
+                McpServerDefinition(
+                    id = "bad",
+                    label = "Bad Server",
+                    endpoint = "https://mcp.example/tools",
+                    enabled = true,
+                    auth = McpAuthConfig(type = McpAuthType.BEARER, token = "")
+                )
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("bearer token"))
+    }
+
+    @Test
+    fun discoverRejectsNegativeBackoff() = runTest {
+        val error = assertFailsWith<IllegalArgumentException> {
+            client.discoverTools(
+                McpServerDefinition(
+                    id = "bad",
+                    label = "Bad Server",
+                    endpoint = "https://mcp.example/tools",
+                    enabled = true,
+                    backoffBaseMs = -1
+                )
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("backoff"))
+    }
 }

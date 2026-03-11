@@ -1,6 +1,10 @@
 package com.example.nanobot.feature.settings
 
+import com.example.nanobot.core.mcp.McpAuthConfig
+import com.example.nanobot.core.mcp.McpAuthType
+import com.example.nanobot.core.mcp.McpHealthStatus
 import com.example.nanobot.core.mcp.McpServerDefinition
+import com.example.nanobot.core.mcp.McpServerHealth
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.ProviderType
 import com.example.nanobot.core.skills.SkillDefinition
@@ -18,7 +22,20 @@ data class McpServerUiState(
     val label: String,
     val endpoint: String,
     val enabled: Boolean,
-    val discoveredToolCount: Int = 0
+    val discoveredToolCount: Int = 0,
+    val authType: McpAuthType = McpAuthType.NONE,
+    val authToken: String = "",
+    val authHeaderName: String = "X-API-Key",
+    val authHeaderValue: String = "",
+    val connectTimeoutSeconds: String = "30",
+    val readTimeoutSeconds: String = "60",
+    val writeTimeoutSeconds: String = "30",
+    val callTimeoutSeconds: String = "90",
+    val maxRetries: String = "2",
+    val backoffBaseMs: String = "500",
+    val healthStatus: McpHealthStatus = McpHealthStatus.UNKNOWN,
+    val healthError: String? = null,
+    val consecutiveFailures: Int = 0
 )
 
 data class SettingsDraftState(
@@ -43,6 +60,16 @@ data class SettingsDraftState(
     val mcpServers: List<McpServerUiState> = emptyList(),
     val draftMcpLabel: String = "",
     val draftMcpEndpoint: String = "",
+    val draftMcpAuthType: McpAuthType = McpAuthType.NONE,
+    val draftMcpAuthToken: String = "",
+    val draftMcpAuthHeaderName: String = "X-API-Key",
+    val draftMcpAuthHeaderValue: String = "",
+    val draftMcpConnectTimeoutSeconds: String = "30",
+    val draftMcpReadTimeoutSeconds: String = "60",
+    val draftMcpWriteTimeoutSeconds: String = "30",
+    val draftMcpCallTimeoutSeconds: String = "90",
+    val draftMcpMaxRetries: String = "2",
+    val draftMcpBackoffBaseMs: String = "500",
     val systemPrompt: String = ""
 )
 
@@ -91,6 +118,16 @@ data class SettingsUiState(
     val mcpServers: List<McpServerUiState> get() = draft.mcpServers
     val draftMcpLabel: String get() = draft.draftMcpLabel
     val draftMcpEndpoint: String get() = draft.draftMcpEndpoint
+    val draftMcpAuthType: McpAuthType get() = draft.draftMcpAuthType
+    val draftMcpAuthToken: String get() = draft.draftMcpAuthToken
+    val draftMcpAuthHeaderName: String get() = draft.draftMcpAuthHeaderName
+    val draftMcpAuthHeaderValue: String get() = draft.draftMcpAuthHeaderValue
+    val draftMcpConnectTimeoutSeconds: String get() = draft.draftMcpConnectTimeoutSeconds
+    val draftMcpReadTimeoutSeconds: String get() = draft.draftMcpReadTimeoutSeconds
+    val draftMcpWriteTimeoutSeconds: String get() = draft.draftMcpWriteTimeoutSeconds
+    val draftMcpCallTimeoutSeconds: String get() = draft.draftMcpCallTimeoutSeconds
+    val draftMcpMaxRetries: String get() = draft.draftMcpMaxRetries
+    val draftMcpBackoffBaseMs: String get() = draft.draftMcpBackoffBaseMs
     val systemPrompt: String get() = draft.systemPrompt
 }
 
@@ -128,11 +165,34 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
                 label = server.label,
                 endpoint = server.endpoint,
                 enabled = server.enabled,
-                discoveredToolCount = mcpToolCounts[server.id] ?: 0
+                discoveredToolCount = mcpToolCounts[server.id] ?: 0,
+                authType = server.auth.type,
+                authToken = server.auth.token,
+                authHeaderName = server.auth.headerName,
+                authHeaderValue = server.auth.headerValue,
+                connectTimeoutSeconds = server.connectTimeoutSeconds.toString(),
+                readTimeoutSeconds = server.readTimeoutSeconds.toString(),
+                writeTimeoutSeconds = server.writeTimeoutSeconds.toString(),
+                callTimeoutSeconds = server.callTimeoutSeconds.toString(),
+                maxRetries = server.maxRetries.toString(),
+                backoffBaseMs = server.backoffBaseMs.toString(),
+                healthStatus = server.health.status,
+                healthError = server.health.lastError,
+                consecutiveFailures = server.health.consecutiveFailures
             )
         },
         draftMcpLabel = "",
         draftMcpEndpoint = "",
+        draftMcpAuthType = McpAuthType.NONE,
+        draftMcpAuthToken = "",
+        draftMcpAuthHeaderName = "X-API-Key",
+        draftMcpAuthHeaderValue = "",
+        draftMcpConnectTimeoutSeconds = "30",
+        draftMcpReadTimeoutSeconds = "60",
+        draftMcpWriteTimeoutSeconds = "30",
+        draftMcpCallTimeoutSeconds = "90",
+        draftMcpMaxRetries = "2",
+        draftMcpBackoffBaseMs = "500",
         systemPrompt = config.systemPrompt
     )
 }
@@ -165,7 +225,24 @@ fun SettingsDraftState.toMcpServerDefinitions(): List<McpServerDefinition> {
             id = server.id,
             label = server.label,
             endpoint = server.endpoint,
-            enabled = server.enabled
+            enabled = server.enabled,
+            auth = McpAuthConfig(
+                type = server.authType,
+                token = server.authToken,
+                headerName = server.authHeaderName,
+                headerValue = server.authHeaderValue
+            ),
+            connectTimeoutSeconds = server.connectTimeoutSeconds.toIntOrNull()?.coerceAtLeast(1) ?: 30,
+            readTimeoutSeconds = server.readTimeoutSeconds.toIntOrNull()?.coerceAtLeast(1) ?: 60,
+            writeTimeoutSeconds = server.writeTimeoutSeconds.toIntOrNull()?.coerceAtLeast(1) ?: 30,
+            callTimeoutSeconds = server.callTimeoutSeconds.toIntOrNull()?.coerceAtLeast(1) ?: 90,
+            maxRetries = server.maxRetries.toIntOrNull()?.coerceAtLeast(0) ?: 2,
+            backoffBaseMs = server.backoffBaseMs.toLongOrNull()?.coerceAtLeast(0L) ?: 500L,
+            health = McpServerHealth(
+                status = server.healthStatus,
+                consecutiveFailures = server.consecutiveFailures,
+                lastError = server.healthError
+            )
         )
     }
 }

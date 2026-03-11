@@ -20,15 +20,16 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ProviderFactoryAttachmentTest {
     @Test
-    fun nonOpenAiProvidersReturnExplicitAttachmentUnsupportedMessage() = kotlinx.coroutines.test.runTest {
+    fun unsupportedProviderReturnsExplicitAttachmentUnsupportedMessage() = kotlinx.coroutines.test.runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val transport = OpenAiCompatibleProvider(
             requestSanitizer = ProviderRequestSanitizer(),
-            attachmentStore = AttachmentStore(ApplicationProvider.getApplicationContext())
+            attachmentStore = AttachmentStore(context)
         )
         val factory = ProviderFactory(
             openAiProvider = OpenAiProvider(transport),
             openRouterProvider = OpenRouterProvider(transport),
-            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer())
+            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer(), AttachmentStore(context))
         )
         val request = LlmChatRequest(
             model = "gpt-4o-mini",
@@ -48,12 +49,17 @@ class ProviderFactoryAttachmentTest {
             )
         )
 
-        val openRouterResult = factory.create(AgentConfig(providerType = ProviderType.OPEN_ROUTER)).completeChat(request)
-        val azureResult = factory.create(AgentConfig(providerType = ProviderType.AZURE_OPENAI)).completeChat(request)
+        // Use a custom provider which does not have supportsImageAttachments enabled
+        val customResult = factory.create(
+            AgentConfig(
+                providerType = ProviderType.OPENAI_COMPATIBLE,
+                providerHint = "custom",
+                baseUrl = "https://example.com/",
+                model = "custom-model"
+            )
+        ).completeChat(request)
 
-        assertTrue(openRouterResult.content.orEmpty().contains("not supported"))
-        assertEquals("error", openRouterResult.finishReason)
-        assertTrue(azureResult.content.orEmpty().contains("not supported"))
-        assertEquals("error", azureResult.finishReason)
+        assertTrue(customResult.content.orEmpty().contains("not supported"))
+        assertEquals("error", customResult.finishReason)
     }
 }

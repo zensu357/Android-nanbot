@@ -9,5 +9,10 @@ data class MemoryFactEntity(
     val fact: String,
     val sourceSessionId: String?,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val confidence: Float = 0.6f,
+    val provenanceMessageIdsJson: String = "[]",
+    val provenanceExcerpt: String? = null,
+    val provenanceSourceKind: String = "conversation",
+    val provenanceExtractor: String = "llm_memory_consolidator"
 )

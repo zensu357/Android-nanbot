@@ -46,7 +46,7 @@ class OpenAiCompatibleProviderAttachmentTest {
         val factory = ProviderFactory(
             openAiProvider = OpenAiProvider(OpenAiCompatibleProvider(ProviderRequestSanitizer(), AttachmentStore(context))),
             openRouterProvider = OpenRouterProvider(OpenAiCompatibleProvider(ProviderRequestSanitizer(), AttachmentStore(context))),
-            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer())
+            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer(), AttachmentStore(context))
         )
         val request = LlmChatRequest(
             model = "gpt-4o-mini",

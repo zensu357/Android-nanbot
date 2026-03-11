@@ -188,6 +188,25 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun attachFile(uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                attachmentStore.importFile(uri)
+            }.onSuccess { attachment ->
+                updateState {
+                    copy(
+                        pendingAttachments = pendingAttachments + attachment,
+                        errorMessage = null
+                    )
+                }
+            }.onFailure { throwable ->
+                updateState {
+                    copy(errorMessage = throwable.message ?: "Failed to attach file.")
+                }
+            }
+        }
+    }
+
     fun removePendingAttachment(attachmentId: String) {
         updateState {
             copy(

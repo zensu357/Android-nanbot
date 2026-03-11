@@ -24,14 +24,16 @@ class MemoryLookupToolTest {
                     fact = "The user prefers Kotlin for Android projects.",
                     sourceSessionId = "session-1",
                     createdAt = 1L,
-                    updatedAt = 100L
+                    updatedAt = 100L,
+                    confidence = 0.92f
                 ),
                 MemoryFact(
                     id = "fact-2",
                     fact = "The user mentioned Kotlin in another session.",
                     sourceSessionId = "session-2",
                     createdAt = 1L,
-                    updatedAt = 90L
+                    updatedAt = 90L,
+                    confidence = 0.58f
                 )
             ),
             summaries = listOf(
@@ -39,7 +41,8 @@ class MemoryLookupToolTest {
                     sessionId = "session-1",
                     summary = "Current session focuses on Kotlin Android work.",
                     updatedAt = 100L,
-                    sourceMessageCount = 8
+                    sourceMessageCount = 8,
+                    confidence = 0.87f
                 )
             )
         )
@@ -54,6 +57,8 @@ class MemoryLookupToolTest {
         assertTrue(result.contains("Current session summaries"))
         assertTrue(result.contains("Current session facts"))
         assertTrue(result.contains("Other matching facts"))
+        assertTrue(result.contains("confidence 87%"))
+        assertTrue(result.contains("evidence: none"))
     }
 
     private class FakeMemoryRepository(

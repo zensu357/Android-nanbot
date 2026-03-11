@@ -4,6 +4,7 @@ import com.example.nanobot.core.preferences.McpServerConfigStore
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonObject
 
 interface McpRegistry {
     fun observeServers(): Flow<List<McpServerDefinition>>
@@ -12,7 +13,7 @@ interface McpRegistry {
     suspend fun listEnabledTools(): List<McpToolDescriptor>
     suspend fun refreshTools(): McpRefreshResult
     suspend fun saveServers(servers: List<McpServerDefinition>)
-    suspend fun callTool(toolName: String, arguments: kotlinx.serialization.json.JsonObject): String
+    suspend fun callTool(toolName: String, arguments: JsonObject): String
     suspend fun getDiscoverySnapshot(): McpToolDiscoverySnapshot
 }
 
@@ -46,18 +47,23 @@ class McpRegistryImpl @Inject constructor(
     }
 
     override suspend fun refreshTools(): McpRefreshResult {
-        val servers = listEnabledServers()
+        val allServers = store.getServersSnapshot()
+        val servers = allServers.filter { it.enabled }
         val previousTools = store.getCachedToolsSnapshot()
         val retainedTools = previousTools.filter { tool -> servers.any { it.id == tool.serverId } }.toMutableList()
         val discoveredByServer = mutableMapOf<String, List<McpToolDescriptor>>()
+        val updatedServers = allServers.associateBy { it.id }.toMutableMap()
         val errors = mutableListOf<String>()
+        val now = System.currentTimeMillis()
 
         servers.forEach { server ->
             runCatching {
                 client.discoverTools(server)
             }.onSuccess { tools ->
                 discoveredByServer[server.id] = tools
+                updatedServers[server.id] = server.markHealthy(now)
             }.onFailure { throwable ->
+                updatedServers[server.id] = server.markFailure(now, throwable.message)
                 errors += "${server.label}: ${throwable.message ?: "Discovery failed."}"
             }
         }
@@ -66,12 +72,17 @@ class McpRegistryImpl @Inject constructor(
             discoveredByServer[server.id]
                 ?: retainedTools.filter { it.serverId == server.id }
         }
+        store.saveServers(allServers.map { server -> updatedServers[server.id] ?: server })
         store.saveCachedTools(mergedTools)
+        val healthStatuses = servers.map { server -> (updatedServers[server.id] ?: server).health.status }
         return McpRefreshResult(
             enabledServerCount = servers.size,
             discoveredToolCount = discoveredByServer.values.sumOf { it.size },
             retainedToolCount = mergedTools.size,
-            errors = errors
+            errors = errors,
+            healthyServerCount = healthStatuses.count { it == McpHealthStatus.HEALTHY },
+            degradedServerCount = healthStatuses.count { it == McpHealthStatus.DEGRADED },
+            unhealthyServerCount = healthStatuses.count { it == McpHealthStatus.UNHEALTHY }
         )
     }
 
@@ -79,12 +90,29 @@ class McpRegistryImpl @Inject constructor(
         store.saveServers(servers)
     }
 
-    override suspend fun callTool(toolName: String, arguments: kotlinx.serialization.json.JsonObject): String {
+    override suspend fun callTool(toolName: String, arguments: JsonObject): String {
         val descriptor = listEnabledTools().firstOrNull { namespacedToolName(it) == toolName }
             ?: return "MCP tool '$toolName' was not found."
         val server = listEnabledServers().firstOrNull { it.id == descriptor.serverId }
             ?: return "MCP server '${descriptor.serverId}' is not enabled."
-        return client.callTool(server, descriptor.remoteName, arguments)
+        val now = System.currentTimeMillis()
+        return runCatching {
+            client.callTool(server, descriptor.remoteName, arguments)
+        }.onSuccess {
+            updateServerHealth(server.id) { it.markHealthy(now) }
+        }.onFailure { throwable ->
+            updateServerHealth(server.id) { it.markFailure(now, throwable.message) }
+        }.getOrThrow()
+    }
+
+    private suspend fun updateServerHealth(
+        serverId: String,
+        transform: (McpServerDefinition) -> McpServerDefinition
+    ) {
+        val updated = store.getServersSnapshot().map { server ->
+            if (server.id == serverId) transform(server) else server
+        }
+        store.saveServers(updated)
     }
 
     companion object {

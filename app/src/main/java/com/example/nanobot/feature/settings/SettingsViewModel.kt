@@ -3,8 +3,8 @@ package com.example.nanobot.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nanobot.core.ai.PromptPresetCatalog
+import com.example.nanobot.core.mcp.McpAuthType
 import com.example.nanobot.core.mcp.McpRegistry
-import com.example.nanobot.core.mcp.McpServerDefinition
 import com.example.nanobot.core.preferences.SettingsConfigStore
 import com.example.nanobot.core.worker.WorkerSchedulingController
 import com.example.nanobot.domain.repository.HeartbeatRepository
@@ -102,6 +102,26 @@ class SettingsViewModel @Inject constructor(
 
     fun onDraftMcpEndpointChanged(value: String) = updateDraft { copy(draftMcpEndpoint = value) }
 
+    fun onDraftMcpAuthTypeChanged(value: McpAuthType) = updateDraft { copy(draftMcpAuthType = value) }
+
+    fun onDraftMcpAuthTokenChanged(value: String) = updateDraft { copy(draftMcpAuthToken = value) }
+
+    fun onDraftMcpAuthHeaderNameChanged(value: String) = updateDraft { copy(draftMcpAuthHeaderName = value) }
+
+    fun onDraftMcpAuthHeaderValueChanged(value: String) = updateDraft { copy(draftMcpAuthHeaderValue = value) }
+
+    fun onDraftMcpConnectTimeoutChanged(value: String) = updateDraft { copy(draftMcpConnectTimeoutSeconds = value) }
+
+    fun onDraftMcpReadTimeoutChanged(value: String) = updateDraft { copy(draftMcpReadTimeoutSeconds = value) }
+
+    fun onDraftMcpWriteTimeoutChanged(value: String) = updateDraft { copy(draftMcpWriteTimeoutSeconds = value) }
+
+    fun onDraftMcpCallTimeoutChanged(value: String) = updateDraft { copy(draftMcpCallTimeoutSeconds = value) }
+
+    fun onDraftMcpMaxRetriesChanged(value: String) = updateDraft { copy(draftMcpMaxRetries = value) }
+
+    fun onDraftMcpBackoffBaseMsChanged(value: String) = updateDraft { copy(draftMcpBackoffBaseMs = value) }
+
     fun onMcpServerToggled(serverId: String, enabled: Boolean) = updateDraft {
         copy(
             mcpServers = mcpServers.map { server ->
@@ -128,10 +148,30 @@ class SettingsViewModel @Inject constructor(
                     label = label,
                     endpoint = endpoint,
                     enabled = true,
-                    discoveredToolCount = 0
+                    discoveredToolCount = 0,
+                    authType = draft.draftMcpAuthType,
+                    authToken = draft.draftMcpAuthToken,
+                    authHeaderName = draft.draftMcpAuthHeaderName,
+                    authHeaderValue = draft.draftMcpAuthHeaderValue,
+                    connectTimeoutSeconds = draft.draftMcpConnectTimeoutSeconds,
+                    readTimeoutSeconds = draft.draftMcpReadTimeoutSeconds,
+                    writeTimeoutSeconds = draft.draftMcpWriteTimeoutSeconds,
+                    callTimeoutSeconds = draft.draftMcpCallTimeoutSeconds,
+                    maxRetries = draft.draftMcpMaxRetries,
+                    backoffBaseMs = draft.draftMcpBackoffBaseMs
                 ),
                 draftMcpLabel = "",
-                draftMcpEndpoint = ""
+                draftMcpEndpoint = "",
+                draftMcpAuthType = McpAuthType.NONE,
+                draftMcpAuthToken = "",
+                draftMcpAuthHeaderName = "X-API-Key",
+                draftMcpAuthHeaderValue = "",
+                draftMcpConnectTimeoutSeconds = "30",
+                draftMcpReadTimeoutSeconds = "60",
+                draftMcpWriteTimeoutSeconds = "30",
+                draftMcpCallTimeoutSeconds = "90",
+                draftMcpMaxRetries = "2",
+                draftMcpBackoffBaseMs = "500"
             )
         }
     }
@@ -147,6 +187,7 @@ class SettingsViewModel @Inject constructor(
             val result = mcpRegistry.refreshTools()
             val status = buildString {
                 append("MCP refresh: ${result.discoveredToolCount} newly discovered tool(s), ${result.retainedToolCount} tool(s) available across ${result.enabledServerCount} enabled server(s)")
+                append(". Health: ${result.healthyServerCount} healthy, ${result.degradedServerCount} degraded, ${result.unhealthyServerCount} unhealthy")
                 if (result.errors.isNotEmpty()) {
                     append(". Errors: ")
                     append(result.errors.joinToString("; "))

@@ -11,9 +11,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,12 +29,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.example.nanobot.core.mcp.McpAuthType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +64,16 @@ fun SettingsScreen(
     onSkillToggle: (String, Boolean) -> Unit,
     onDraftMcpLabelChange: (String) -> Unit,
     onDraftMcpEndpointChange: (String) -> Unit,
+    onDraftMcpAuthTypeChange: (McpAuthType) -> Unit,
+    onDraftMcpAuthTokenChange: (String) -> Unit,
+    onDraftMcpAuthHeaderNameChange: (String) -> Unit,
+    onDraftMcpAuthHeaderValueChange: (String) -> Unit,
+    onDraftMcpConnectTimeoutChange: (String) -> Unit,
+    onDraftMcpReadTimeoutChange: (String) -> Unit,
+    onDraftMcpWriteTimeoutChange: (String) -> Unit,
+    onDraftMcpCallTimeoutChange: (String) -> Unit,
+    onDraftMcpMaxRetriesChange: (String) -> Unit,
+    onDraftMcpBackoffBaseMsChange: (String) -> Unit,
     onMcpServerToggle: (String, Boolean) -> Unit,
     onAddMcpServer: () -> Unit,
     onRemoveMcpServer: (String) -> Unit,
@@ -230,6 +248,69 @@ fun SettingsScreen(
                     label = { Text("MCP Server Endpoint") },
                     supportingText = { Text("Remote HTTP/HTTPS endpoint for dynamic MCP tool discovery via JSON-RPC") }
                 )
+                McpAuthTypeField(
+                    value = state.draftMcpAuthType,
+                    onValueChange = onDraftMcpAuthTypeChange,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (state.draftMcpAuthType == McpAuthType.BEARER) {
+                    OutlinedTextField(
+                        value = state.draftMcpAuthToken,
+                        onValueChange = onDraftMcpAuthTokenChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Bearer Token") }
+                    )
+                }
+                if (state.draftMcpAuthType == McpAuthType.HEADER) {
+                    OutlinedTextField(
+                        value = state.draftMcpAuthHeaderName,
+                        onValueChange = onDraftMcpAuthHeaderNameChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Auth Header Name") }
+                    )
+                    OutlinedTextField(
+                        value = state.draftMcpAuthHeaderValue,
+                        onValueChange = onDraftMcpAuthHeaderValueChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Auth Header Value") }
+                    )
+                }
+                OutlinedTextField(
+                    value = state.draftMcpConnectTimeoutSeconds,
+                    onValueChange = onDraftMcpConnectTimeoutChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Connect Timeout Seconds") }
+                )
+                OutlinedTextField(
+                    value = state.draftMcpReadTimeoutSeconds,
+                    onValueChange = onDraftMcpReadTimeoutChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Read Timeout Seconds") }
+                )
+                OutlinedTextField(
+                    value = state.draftMcpWriteTimeoutSeconds,
+                    onValueChange = onDraftMcpWriteTimeoutChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Write Timeout Seconds") }
+                )
+                OutlinedTextField(
+                    value = state.draftMcpCallTimeoutSeconds,
+                    onValueChange = onDraftMcpCallTimeoutChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Call Timeout Seconds") }
+                )
+                OutlinedTextField(
+                    value = state.draftMcpMaxRetries,
+                    onValueChange = onDraftMcpMaxRetriesChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Max Retries") }
+                )
+                OutlinedTextField(
+                    value = state.draftMcpBackoffBaseMs,
+                    onValueChange = onDraftMcpBackoffBaseMsChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Backoff Base Millis") }
+                )
                 Button(
                     onClick = onAddMcpServer,
                     modifier = Modifier.fillMaxWidth()
@@ -270,6 +351,23 @@ fun SettingsScreen(
                             )
                             Text(
                                 text = "Discovered tools: ${server.discoveredToolCount}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Health: ${server.healthStatus.name.lowercase()} (${server.consecutiveFailures} failure(s))",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            server.healthError?.takeIf { it.isNotBlank() }?.let { error ->
+                                Text(
+                                    text = "Last error: $error",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            Text(
+                                text = "Timeouts ${server.connectTimeoutSeconds}/${server.readTimeoutSeconds}/${server.writeTimeoutSeconds}/${server.callTimeoutSeconds}s, retries ${server.maxRetries}, backoff ${server.backoffBaseMs}ms",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -388,6 +486,46 @@ fun SettingsScreen(
                 ) {
                     Text(if (state.isSaving) "Saving..." else "Save")
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun McpAuthTypeField(
+    value: McpAuthType,
+    onValueChange: (McpAuthType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value.name,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Auth Type") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            McpAuthType.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.name) },
+                    onClick = {
+                        expanded = false
+                        onValueChange(option)
+                    }
+                )
             }
         }
     }

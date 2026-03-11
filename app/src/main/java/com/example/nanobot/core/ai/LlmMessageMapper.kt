@@ -31,10 +31,16 @@ fun ChatMessage.toLlmMessage(): LlmMessageDto {
     return LlmMessageDto(
         role = normalizedRole,
         content = normalizedContent,
-        attachments = attachments.mapNotNull { attachment ->
+        attachments = attachments.map { attachment ->
             when (attachment.type) {
                 AttachmentType.IMAGE -> LlmAttachmentDto(
                     type = "image",
+                    mimeType = attachment.mimeType,
+                    fileName = attachment.displayName,
+                    localPath = attachment.localPath
+                )
+                AttachmentType.FILE -> LlmAttachmentDto(
+                    type = "file",
                     mimeType = attachment.mimeType,
                     fileName = attachment.displayName,
                     localPath = attachment.localPath

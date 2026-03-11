@@ -3,6 +3,7 @@ package com.example.nanobot.core.tools.impl
 import com.example.nanobot.core.memory.MemorySearchScorer
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.model.toConfidencePercent
 import com.example.nanobot.core.model.MemorySummary
 import com.example.nanobot.core.tools.AgentTool
 import com.example.nanobot.core.tools.ToolAccessCategory
@@ -82,12 +83,16 @@ class MemoryLookupTool @Inject constructor(
             if (sessionFacts.isNotEmpty()) {
                 if (isNotEmpty()) appendLine()
                 appendLine("Current session facts:")
-                sessionFacts.forEach { appendLine("- ${it.fact.take(180)}") }
+                sessionFacts.forEach { fact ->
+                    appendLine("- ${formatFact(fact.fact.take(180), fact.confidence, fact.provenance.evidenceExcerpt)}")
+                }
             }
             if (otherFacts.isNotEmpty()) {
                 if (isNotEmpty()) appendLine()
                 appendLine("Other matching facts:")
-                otherFacts.forEach { appendLine("- ${it.fact.take(180)}") }
+                otherFacts.forEach { fact ->
+                    appendLine("- ${formatFact(fact.fact.take(180), fact.confidence, fact.provenance.evidenceExcerpt)}")
+                }
             }
             if (otherSummaries.isNotEmpty()) {
                 if (isNotEmpty()) appendLine()
@@ -99,6 +104,14 @@ class MemoryLookupTool @Inject constructor(
     private fun StringBuilder.appendSummarySection(title: String, summaries: List<MemorySummary>) {
         if (summaries.isEmpty()) return
         appendLine(title)
-        summaries.forEach { appendLine("- ${it.summary.take(220)}") }
+        summaries.forEach { summary ->
+            appendLine("- ${formatFact(summary.summary.take(220), summary.confidence, summary.provenance.evidenceExcerpt)}")
+        }
+    }
+
+    private fun formatFact(text: String, confidence: Float, evidenceExcerpt: String?): String {
+        val confidenceLabel = "confidence ${confidence.toConfidencePercent()}%"
+        val evidenceLabel = evidenceExcerpt?.takeIf { it.isNotBlank() }?.let { "evidence: ${it.take(120)}" } ?: "evidence: none"
+        return "$text ($confidenceLabel, $evidenceLabel)"
     }
 }
