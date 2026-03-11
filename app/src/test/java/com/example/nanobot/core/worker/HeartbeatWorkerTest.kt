@@ -125,7 +125,9 @@ class HeartbeatWorkerTest {
 
     private class FakeSettingsConfigStore(config: AgentConfig) : SettingsConfigStore {
         override val configFlow: Flow<AgentConfig> = MutableStateFlow(config)
+        override val skillsDirectoryUriFlow: Flow<String?> = MutableStateFlow(null)
         override suspend fun save(config: AgentConfig) = Unit
+        override suspend fun saveSkillsDirectoryUri(uri: String?) = Unit
     }
 
     private class FakeHeartbeatDecisionEngine(

@@ -13,7 +13,10 @@ import kotlinx.serialization.json.JsonPrimitive
 class PromptComposer @Inject constructor(
     private val systemPromptBuilder: SystemPromptBuilder,
     private val runtimeContextBuilder: RuntimeContextBuilder,
-    private val memoryConsolidator: MemoryConsolidator
+    private val memoryConsolidator: MemoryConsolidator,
+    private val memoryExposurePlanner: MemoryExposurePlanner,
+    private val historyExposurePlanner: HistoryExposurePlanner,
+    private val promptDiagnosticsStore: PromptDiagnosticsStore
 ) {
     suspend fun compose(
         runContext: AgentRunContext,
@@ -30,22 +33,29 @@ class PromptComposer @Inject constructor(
             temperature = config.temperature
         )
         val messages = mutableListOf<LlmMessageDto>()
-        val memoryContext = memoryConsolidator.buildMemoryContext(runContext.sessionId)
+        val memoryExposure = if (config.enableMemory) {
+            memoryExposurePlanner.buildWithDiagnostics(runContext.sessionId, latestUserInput)
+        } else {
+            MemoryExposureResult(null, false, 0, 0)
+        }
+        val systemPrompt = systemPromptBuilder.buildWithDiagnostics(
+            config = config,
+            memoryContext = memoryExposure.context,
+            latestUserInput = latestUserInput
+        )
         messages += LlmMessageDto(
             role = "system",
-            content = systemPromptBuilder.build(
-                config = config,
-                memoryContext = memoryContext
-            ).let(::JsonPrimitive)
+            content = systemPrompt.prompt.let(::JsonPrimitive)
         )
-        history.forEach { message ->
+        val historyExposure = historyExposurePlanner.planWithDiagnostics(config, history)
+        historyExposure.messages.forEach { message ->
             messages += message.toLlmMessage()
         }
-        val runtimeContext = runtimeContextBuilder.build(config, runContext, route)
+        val runtimeContext = runtimeContextBuilder.buildWithDiagnostics(config, runContext, route, latestUserInput)
         messages += LlmMessageDto(
             role = MessageRole.USER.name.lowercase(),
             content = JsonPrimitive(
-                runtimeContext + "\n\n" + latestUserInput
+                runtimeContext.context + "\n\n" + latestUserInput
             ),
             attachments = latestAttachments.map { attachment ->
                 com.example.nanobot.core.model.LlmAttachmentDto(
@@ -55,6 +65,22 @@ class PromptComposer @Inject constructor(
                     localPath = attachment.localPath
                 )
             }
+        )
+        promptDiagnosticsStore.publish(
+            PromptDiagnosticsSnapshot(
+                systemPromptChars = systemPrompt.prompt.length,
+                systemPromptSections = systemPrompt.sectionTitles,
+                catalogSkillIds = systemPrompt.catalogSkillIds,
+                expandedSkillIds = systemPrompt.expandedSkillIds,
+                memorySummaryIncluded = memoryExposure.summaryIncluded,
+                memorySessionFactCount = memoryExposure.sessionFactCount,
+                memoryLongTermFactCount = memoryExposure.longTermFactCount,
+                runtimeDiagnosticsEnabled = runtimeContext.diagnosticsEnabled,
+                runtimeContextChars = runtimeContext.context.length,
+                historyOriginalCount = historyExposure.originalCount,
+                historyKeptCount = historyExposure.keptCount,
+                historyTruncatedMessageCount = historyExposure.truncatedMessageCount
+            )
         )
         return messages
     }

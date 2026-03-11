@@ -6,13 +6,11 @@ import com.example.nanobot.core.mcp.McpServerDefinition
 import com.example.nanobot.core.mcp.McpToolDescriptor
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
-import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.tools.AgentTool
 import com.example.nanobot.core.tools.ToolAccessCategory
 import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.core.tools.ToolRegistry
 import com.example.nanobot.core.tools.ToolValidator
-import com.example.nanobot.data.repository.SkillRepositoryImpl
 import com.example.nanobot.domain.repository.WorkspaceRepository
 import com.example.nanobot.core.workspace.WorkspaceEntry
 import com.example.nanobot.core.workspace.WorkspaceFileContent
@@ -20,6 +18,7 @@ import com.example.nanobot.core.workspace.WorkspaceReplaceResult
 import com.example.nanobot.core.workspace.WorkspaceRoot
 import com.example.nanobot.core.workspace.WorkspaceSearchHit
 import com.example.nanobot.core.workspace.WorkspaceWriteResult
+import com.example.nanobot.testutil.FakeSkillRepository
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -36,7 +35,7 @@ class RuntimeContextBuilderTest {
         val builder = RuntimeContextBuilder(
             workspaceRepository = FakeWorkspaceRepository(),
             toolRegistry = registry,
-            skillRepository = SkillRepositoryImpl(SkillCatalog()),
+            skillRepository = FakeSkillRepository(),
             mcpRegistry = FakeMcpRegistry()
         )
         val config = AgentConfig(enabledSkillIds = listOf("planner_mode"))
@@ -66,6 +65,40 @@ class RuntimeContextBuilderTest {
         assertTrue(context.contains("Enabled Skills: planner_mode"))
         assertTrue(context.contains("Enabled MCP Servers: GitHub MCP"))
         assertTrue(context.contains("Dynamic MCP Tools: 1"))
+        assertTrue(!context.contains("Workspace Sandbox:"))
+    }
+
+    @Test
+    fun includesDiagnosticsWhenUserAsksForDebugContext() = runTest {
+        val registry = ToolRegistry(ToolValidator(), ToolAccessPolicy()).apply {
+            register(FakeTool("delegate_task", ToolAccessCategory.LOCAL_ORCHESTRATION))
+            register(FakeTool("write_file", ToolAccessCategory.WORKSPACE_SIDE_EFFECT))
+        }
+        val builder = RuntimeContextBuilder(
+            workspaceRepository = FakeWorkspaceRepository(),
+            toolRegistry = registry,
+            skillRepository = FakeSkillRepository(),
+            mcpRegistry = FakeMcpRegistry()
+        )
+        val config = AgentConfig(enabledSkillIds = listOf("planner_mode"), maxTokens = 512)
+        val route = ProviderRegistry.resolve(
+            providerType = config.providerType,
+            apiKey = config.apiKey,
+            baseUrl = config.baseUrl,
+            model = config.model,
+            temperature = config.temperature
+        )
+
+        val context = builder.build(
+            config = config,
+            runContext = AgentRunContext.root(sessionId = "session-1"),
+            route = route,
+            latestUserInput = "Help me debug the provider and workspace context."
+        )
+
+        assertTrue(context.contains("Workspace Sandbox: workspace:/sandbox"))
+        assertTrue(context.contains("Provider Label:"))
+        assertTrue(context.contains("Tool Access Policy:"))
     }
 
     private class FakeMcpRegistry : McpRegistry {

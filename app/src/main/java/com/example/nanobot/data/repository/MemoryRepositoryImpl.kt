@@ -38,7 +38,15 @@ class MemoryRepositoryImpl @Inject constructor(
         val normalized = query.trim().lowercase()
         if (normalized.isBlank()) return emptyList()
         return getFacts()
-            .map { fact -> fact to MemorySearchScorer.score(normalized, fact.fact, fact.updatedAt, fact.sourceSessionId) }
+            .map { fact ->
+                fact to MemorySearchScorer.score(
+                    query = normalized,
+                    text = fact.fact,
+                    updatedAt = fact.updatedAt,
+                    confidence = fact.confidence,
+                    sourceSessionId = fact.sourceSessionId
+                )
+            }
             .filter { (_, score) -> score > 0 }
             .sortedByDescending { (_, score) -> score }
             .map { (fact, _) -> fact }

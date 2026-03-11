@@ -1,10 +1,10 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
-import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.tools.ToolAccessPolicy
-import com.example.nanobot.data.repository.SkillRepositoryImpl
+import com.example.nanobot.testutil.FakeSkillRepository
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SystemPromptBuilderTest {
@@ -12,8 +12,11 @@ class SystemPromptBuilderTest {
     fun includesPresetAndCustomInstructions() {
         val builder = SystemPromptBuilder(
             PromptPresetCatalog(),
-            SkillRepositoryImpl(SkillCatalog()),
-            ToolAccessPolicy()
+            FakeSkillRepository(),
+            ToolAccessPolicy(),
+            SkillSelector(),
+            SkillPromptAssembler(),
+            ContextBudgetPlanner()
         )
 
         val prompt = kotlinx.coroutines.runBlocking {
@@ -30,5 +33,33 @@ class SystemPromptBuilderTest {
         assertTrue(prompt.contains("## Preset Instructions"))
         assertTrue(prompt.contains("## Custom User Instructions"))
         assertTrue(prompt.contains("Always explain the implementation plan before coding."))
+    }
+
+    @Test
+    fun trimsOversizedMemoryAndCustomSectionsWithinBudget() {
+        val builder = SystemPromptBuilder(
+            PromptPresetCatalog(),
+            FakeSkillRepository(),
+            ToolAccessPolicy(),
+            SkillSelector(),
+            SkillPromptAssembler(),
+            ContextBudgetPlanner()
+        )
+
+        val prompt = kotlinx.coroutines.runBlocking {
+            builder.build(
+                AgentConfig(
+                    maxTokens = 256,
+                    systemPrompt = "S".repeat(1200)
+                ),
+                memoryContext = "M".repeat(1400),
+                latestUserInput = "Help me with this task."
+            )
+        }
+
+        assertTrue(prompt.contains("## Custom User Instructions"))
+        assertTrue(prompt.contains("## Memory Context"))
+        assertTrue(prompt.contains("..."))
+        assertFalse(prompt.length > 2600)
     }
 }

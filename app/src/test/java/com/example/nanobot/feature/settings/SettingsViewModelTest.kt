@@ -11,10 +11,9 @@ import com.example.nanobot.core.mcp.McpToolDescriptor
 import com.example.nanobot.core.mcp.McpToolDiscoverySnapshot
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.preferences.SettingsConfigStore
-import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.worker.WorkerSchedulingController
-import com.example.nanobot.data.repository.SkillRepositoryImpl
 import com.example.nanobot.domain.repository.HeartbeatRepository
+import com.example.nanobot.testutil.FakeSkillRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -165,7 +164,7 @@ class SettingsViewModelTest {
         return SettingsViewModel(
             settingsDataStore = settingsStore,
             promptPresetCatalog = PromptPresetCatalog(),
-            skillRepository = SkillRepositoryImpl(SkillCatalog()),
+            skillRepository = FakeSkillRepository(),
             mcpRegistry = mcpRegistry,
             heartbeatRepository = heartbeatRepository,
             nanobotWorkerScheduler = workerScheduler
@@ -174,13 +173,19 @@ class SettingsViewModelTest {
 
     private class FakeSettingsConfigStore(initial: AgentConfig) : SettingsConfigStore {
         private val flow = MutableStateFlow(initial)
+        private val skillsDirectory = MutableStateFlow<String?>(null)
         var savedConfig: AgentConfig? = null
 
         override val configFlow: Flow<AgentConfig> = flow
+        override val skillsDirectoryUriFlow: Flow<String?> = skillsDirectory
 
         override suspend fun save(config: AgentConfig) {
             savedConfig = config
             flow.value = config
+        }
+
+        override suspend fun saveSkillsDirectoryUri(uri: String?) {
+            skillsDirectory.value = uri
         }
 
         fun emit(config: AgentConfig) {

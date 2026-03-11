@@ -3,6 +3,7 @@ package com.example.nanobot.di
 import android.content.Context
 import androidx.room.Room
 import com.example.nanobot.core.database.NanobotDatabase
+import com.example.nanobot.core.database.dao.CustomSkillDao
 import com.example.nanobot.core.ai.AgentOrchestrator
 import com.example.nanobot.core.ai.AgentTurnRunner
 import com.example.nanobot.core.ai.HeartbeatDecisionEngine
@@ -19,6 +20,8 @@ import com.example.nanobot.core.notifications.ReminderNotifier
 import com.example.nanobot.core.preferences.McpServerConfigStore
 import com.example.nanobot.core.preferences.McpServerStore
 import com.example.nanobot.core.preferences.SettingsConfigStore
+import com.example.nanobot.core.skills.SkillDirectoryScanner
+import com.example.nanobot.core.skills.SkillImportScanner
 import com.example.nanobot.core.database.dao.MessageDao
 import com.example.nanobot.core.database.dao.MemoryFactDao
 import com.example.nanobot.core.database.dao.MemorySummaryDao
@@ -143,6 +146,9 @@ object AppModule {
     fun provideReminderDao(database: NanobotDatabase): ReminderDao = database.reminderDao()
 
     @Provides
+    fun provideCustomSkillDao(database: NanobotDatabase): CustomSkillDao = database.customSkillDao()
+
+    @Provides
     @Singleton
     fun provideSessionRepository(impl: SessionRepositoryImpl): SessionRepository = impl
 
@@ -173,6 +179,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSkillRepository(impl: SkillRepositoryImpl): SkillRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideSkillImportScanner(scanner: SkillDirectoryScanner): SkillImportScanner = scanner
 
     @Provides
     @Singleton

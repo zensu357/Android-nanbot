@@ -14,7 +14,9 @@ data class SkillOptionUiState(
     val title: String,
     val description: String,
     val checked: Boolean,
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    val isImported: Boolean = false,
+    val originLabel: String? = null
 )
 
 data class McpServerUiState(
@@ -57,6 +59,8 @@ data class SettingsDraftState(
     val restrictToWorkspace: Boolean = false,
     val presetId: String = "assistant_default",
     val skillOptions: List<SkillOptionUiState> = emptyList(),
+    val skillsDirectoryUri: String? = null,
+    val skillImportStatus: String? = null,
     val mcpServers: List<McpServerUiState> = emptyList(),
     val draftMcpLabel: String = "",
     val draftMcpEndpoint: String = "",
@@ -78,6 +82,7 @@ data class SettingsBaselineState(
     val heartbeatEnabled: Boolean,
     val heartbeatInstructions: String,
     val skills: List<SkillDefinition>,
+    val skillsDirectoryUri: String?,
     val mcpServers: List<McpServerDefinition>,
     val mcpToolCounts: Map<String, Int>
 )
@@ -115,6 +120,8 @@ data class SettingsUiState(
     val restrictToWorkspace: Boolean get() = draft.restrictToWorkspace
     val presetId: String get() = draft.presetId
     val skillOptions: List<SkillOptionUiState> get() = draft.skillOptions
+    val skillsDirectoryUri: String? get() = draft.skillsDirectoryUri
+    val skillImportStatus: String? get() = draft.skillImportStatus
     val mcpServers: List<McpServerUiState> get() = draft.mcpServers
     val draftMcpLabel: String get() = draft.draftMcpLabel
     val draftMcpEndpoint: String get() = draft.draftMcpEndpoint
@@ -156,9 +163,13 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
                 title = skill.title,
                 description = skill.description,
                 checked = skill.id in config.enabledSkillIds,
-                tags = skill.tags
+                tags = skill.tags,
+                isImported = skill.isImported,
+                originLabel = skill.originLabel
             )
         },
+        skillsDirectoryUri = skillsDirectoryUri,
+        skillImportStatus = null,
         mcpServers = mcpServers.map { server ->
             McpServerUiState(
                 id = server.id,

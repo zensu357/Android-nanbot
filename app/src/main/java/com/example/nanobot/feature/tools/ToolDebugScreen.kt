@@ -66,6 +66,56 @@ fun ToolDebugScreen(
                 )
             }
 
+            state.promptDiagnostics?.let { diagnostics ->
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Latest Prompt Diagnostics",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "System prompt: ${diagnostics.systemPromptChars} chars",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Sections: ${diagnostics.systemPromptSections.joinToString()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Skills catalog/expanded: ${diagnostics.catalogSkillIds.joinToString().ifBlank { "(none)" }} / ${diagnostics.expandedSkillIds.joinToString().ifBlank { "(none)" }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Memory summary/session/long-term: ${diagnostics.memorySummaryIncluded} / ${diagnostics.memorySessionFactCount} / ${diagnostics.memoryLongTermFactCount}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Runtime diagnostics: ${diagnostics.runtimeDiagnosticsEnabled} (${diagnostics.runtimeContextChars} chars)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "History kept/original/truncated: ${diagnostics.historyKeptCount}/${diagnostics.historyOriginalCount}/${diagnostics.historyTruncatedMessageCount}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
             if (state.restrictToWorkspace) {
                 item {
                     Text(

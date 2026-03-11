@@ -23,7 +23,9 @@ import kotlinx.coroutines.flow.map
 
 interface SettingsConfigStore {
     val configFlow: Flow<AgentConfig>
+    val skillsDirectoryUriFlow: Flow<String?>
     suspend fun save(config: AgentConfig)
+    suspend fun saveSkillsDirectoryUri(uri: String?)
 }
 
 @Singleton
@@ -68,6 +70,16 @@ class SettingsDataStore @Inject constructor(
             )
         }
 
+    override val skillsDirectoryUriFlow: Flow<String?> = dataStore.data
+        .catch {
+            if (it is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw it
+            }
+        }
+        .map { preferences -> preferences[SKILLS_DIRECTORY_URI] }
+
     override suspend fun save(config: AgentConfig) {
         dataStore.edit { preferences ->
             preferences[PROVIDER_TYPE] = config.providerType.wireValue
@@ -88,6 +100,16 @@ class SettingsDataStore @Inject constructor(
             preferences[ENABLED_SKILL_IDS] = config.enabledSkillIds.joinToString(SKILL_ID_SEPARATOR)
             preferences[SYSTEM_PROMPT] = config.systemPrompt
             preferences[TEMPERATURE] = config.temperature
+        }
+    }
+
+    override suspend fun saveSkillsDirectoryUri(uri: String?) {
+        dataStore.edit { preferences ->
+            if (uri.isNullOrBlank()) {
+                preferences.remove(SKILLS_DIRECTORY_URI)
+            } else {
+                preferences[SKILLS_DIRECTORY_URI] = uri
+            }
         }
     }
 
@@ -121,6 +143,7 @@ class SettingsDataStore @Inject constructor(
         val RESTRICT_TO_WORKSPACE = booleanPreferencesKey("restrict_to_workspace")
         val PRESET_ID = stringPreferencesKey("preset_id")
         val ENABLED_SKILL_IDS = stringPreferencesKey("enabled_skill_ids")
+        val SKILLS_DIRECTORY_URI = stringPreferencesKey("skills_directory_uri")
         val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
         val TEMPERATURE = doublePreferencesKey("temperature")
     }

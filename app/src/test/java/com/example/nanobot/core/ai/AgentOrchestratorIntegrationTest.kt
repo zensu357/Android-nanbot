@@ -15,7 +15,6 @@ import com.example.nanobot.core.model.MemorySummary
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.core.model.ProviderChatResult
 import com.example.nanobot.core.model.ToolCallRequest
-import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.subagent.SubagentCoordinator
 import com.example.nanobot.core.tools.AgentTool
 import com.example.nanobot.core.tools.ToolAccessCategory
@@ -23,11 +22,11 @@ import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.core.tools.ToolRegistry
 import com.example.nanobot.core.tools.ToolValidator
 import com.example.nanobot.core.tools.impl.DelegateTaskTool
-import com.example.nanobot.data.repository.SkillRepositoryImpl
 import com.example.nanobot.domain.repository.ChatRepository
 import com.example.nanobot.domain.repository.MemoryRepository
 import com.example.nanobot.domain.repository.SessionRepository
 import com.example.nanobot.domain.usecase.SendMessageUseCase
+import com.example.nanobot.testutil.FakeSkillRepository
 import javax.inject.Provider
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -50,7 +49,7 @@ class AgentOrchestratorIntegrationTest {
     fun delegateTaskCreatesChildSessionReturnsSummaryAndKeepsParentActive() = runTest {
         val sessionRepository = FakeSessionRepository()
         val chatRepository = DelegatingChatRepository()
-        val skillRepository = SkillRepositoryImpl(SkillCatalog())
+        val skillRepository = FakeSkillRepository()
         val mcpRegistry = EmptyMcpRegistry()
         lateinit var orchestrator: AgentOrchestrator
         val subagentCoordinator = SubagentCoordinator(sessionRepository, Provider { orchestrator })
@@ -58,9 +57,12 @@ class AgentOrchestratorIntegrationTest {
             register(DelegateTaskTool(subagentCoordinator))
         }
         val promptComposer = PromptComposer(
-            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy()),
+            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner()),
             runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry),
-            memoryConsolidator = MemoryConsolidator(FakeMemoryRepository(), chatRepository, MemoryPromptBuilder())
+            memoryConsolidator = MemoryConsolidator(FakeMemoryRepository(), chatRepository, MemoryPromptBuilder()),
+            memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
+            historyExposurePlanner = HistoryExposurePlanner(),
+            promptDiagnosticsStore = PromptDiagnosticsStore()
         )
         orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
         val useCase = SendMessageUseCase(sessionRepository, orchestrator)
@@ -84,7 +86,7 @@ class AgentOrchestratorIntegrationTest {
     fun delegateTaskCanWriteWorkspaceArtifactAndReturnArtifactSummaryToParent() = runTest {
         val sessionRepository = FakeSessionRepository()
         val chatRepository = DelegateAndWriteChatRepository()
-        val skillRepository = SkillRepositoryImpl(SkillCatalog())
+        val skillRepository = FakeSkillRepository()
         val mcpRegistry = EmptyMcpRegistry()
         lateinit var orchestrator: AgentOrchestrator
         val subagentCoordinator = SubagentCoordinator(sessionRepository, Provider { orchestrator })
@@ -99,9 +101,12 @@ class AgentOrchestratorIntegrationTest {
             )
         }
         val promptComposer = PromptComposer(
-            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy()),
+            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner()),
             runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry),
-            memoryConsolidator = MemoryConsolidator(FakeMemoryRepository(), chatRepository, MemoryPromptBuilder())
+            memoryConsolidator = MemoryConsolidator(FakeMemoryRepository(), chatRepository, MemoryPromptBuilder()),
+            memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
+            historyExposurePlanner = HistoryExposurePlanner(),
+            promptDiagnosticsStore = PromptDiagnosticsStore()
         )
         orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
         val useCase = SendMessageUseCase(sessionRepository, orchestrator)

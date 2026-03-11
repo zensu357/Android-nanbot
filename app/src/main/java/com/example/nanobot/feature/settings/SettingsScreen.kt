@@ -1,5 +1,8 @@
-﻿package com.example.nanobot.feature.settings
+package com.example.nanobot.feature.settings
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -33,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +66,9 @@ fun SettingsScreen(
     onRestrictToWorkspaceChange: (Boolean) -> Unit,
     onPresetChange: (String) -> Unit,
     onSkillToggle: (String, Boolean) -> Unit,
+    onSkillDirectorySelected: (android.net.Uri) -> Unit,
+    onRescanImportedSkills: () -> Unit,
+    onRemoveImportedSkill: (String) -> Unit,
     onDraftMcpLabelChange: (String) -> Unit,
     onDraftMcpEndpointChange: (String) -> Unit,
     onDraftMcpAuthTypeChange: (McpAuthType) -> Unit,
@@ -86,6 +93,20 @@ fun SettingsScreen(
     onBackClick: () -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val skillsDirectoryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            onSkillDirectorySelected(uri)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -201,6 +222,32 @@ fun SettingsScreen(
             // Skills Group
             if (state.skillOptions.isNotEmpty()) {
                 SettingsGroup(title = "Skills") {
+                    OutlinedButton(
+                        onClick = { skillsDirectoryLauncher.launch(null) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Import Skills From Directory")
+                    }
+                    OutlinedButton(
+                        onClick = onRescanImportedSkills,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Rescan Imported Skills")
+                    }
+                    state.skillsDirectoryUri?.takeIf { it.isNotBlank() }?.let { uri ->
+                        Text(
+                            text = "Imported directory: $uri",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    state.skillImportStatus?.takeIf { it.isNotBlank() }?.let { status ->
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     state.skillOptions.forEach { skill ->
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -220,12 +267,31 @@ fun SettingsScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (skill.isImported) {
+                                    Text(
+                                        text = "Imported Skill",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                                 if (skill.tags.isNotEmpty()) {
                                     Text(
                                         text = "Tags: ${skill.tags.joinToString()}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                }
+                                skill.originLabel?.takeIf { it.isNotBlank() }?.let { origin ->
+                                    Text(
+                                        text = "Source: $origin",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (skill.isImported) {
+                                    TextButton(onClick = { onRemoveImportedSkill(skill.id) }) {
+                                        Text("Remove Imported Skill")
+                                    }
                                 }
                             }
                         }

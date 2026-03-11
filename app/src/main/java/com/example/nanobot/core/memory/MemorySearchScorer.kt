@@ -5,6 +5,7 @@ object MemorySearchScorer {
         query: String,
         text: String,
         updatedAt: Long,
+        confidence: Float = 0.6f,
         sourceSessionId: String? = null,
         preferredSessionId: String? = null
     ): Int {
@@ -27,9 +28,11 @@ object MemorySearchScorer {
                 else -> 0
             }
         }
+        if (exactPhraseBonus == 0 && tokenScore == 0) return 0
         val sessionBonus: Int = if (!preferredSessionId.isNullOrBlank() && preferredSessionId == sourceSessionId) 30 else 0
         val recencyBonus: Int = ((updatedAt / 1_000L) % 17L).toInt()
+        val confidenceBonus: Int = (confidence.coerceIn(0f, 1f) * 20f).toInt()
 
-        return exactPhraseBonus + tokenScore + sessionBonus + recencyBonus
+        return exactPhraseBonus + tokenScore + sessionBonus + recencyBonus + confidenceBonus
     }
 }

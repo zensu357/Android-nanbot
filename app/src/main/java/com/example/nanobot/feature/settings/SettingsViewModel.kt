@@ -1,5 +1,6 @@
 package com.example.nanobot.feature.settings
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nanobot.core.ai.PromptPresetCatalog
@@ -37,16 +38,26 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 settingsDataStore.configFlow,
+                settingsDataStore.skillsDirectoryUriFlow,
+                skillRepository.observeSkills(),
                 mcpRegistry.observeServers(),
                 mcpRegistry.observeCachedTools(),
                 heartbeatRepository.observeHeartbeatEnabled(),
                 heartbeatRepository.observeHeartbeatInstructions()
-            ) { config, mcpServers, mcpTools, heartbeatEnabled, heartbeatInstructions ->
+            ) { values ->
+                val config = values[0] as com.example.nanobot.core.model.AgentConfig
+                val skillsDirectoryUri = values[1] as String?
+                val skills = values[2] as List<com.example.nanobot.core.skills.SkillDefinition>
+                val mcpServers = values[3] as List<com.example.nanobot.core.mcp.McpServerDefinition>
+                val mcpTools = values[4] as List<com.example.nanobot.core.mcp.McpToolDescriptor>
+                val heartbeatEnabled = values[5] as Boolean
+                val heartbeatInstructions = values[6] as String
                 SettingsBaselineState(
                     config = config,
                     heartbeatEnabled = heartbeatEnabled,
                     heartbeatInstructions = heartbeatInstructions,
-                    skills = skillRepository.listSkills(),
+                    skills = skills,
+                    skillsDirectoryUri = skillsDirectoryUri,
                     mcpServers = mcpServers,
                     mcpToolCounts = mcpTools.groupingBy { it.serverId }.eachCount()
                 )
@@ -96,6 +107,34 @@ class SettingsViewModel @Inject constructor(
                 if (option.id == skillId) option.copy(checked = enabled) else option
             }
         )
+    }
+
+    fun onSkillDirectorySelected(uri: Uri) {
+        viewModelScope.launch {
+            settingsDataStore.saveSkillsDirectoryUri(uri.toString())
+            val result = skillRepository.importSkillsFromDirectory(uri)
+            val status = buildSkillImportStatus("Import", result)
+            updateUiState { current -> current.copy(draft = current.draft.copy(skillImportStatus = status)) }
+        }
+    }
+
+    fun onRemoveImportedSkill(skillId: String) {
+        viewModelScope.launch {
+            skillRepository.removeImportedSkill(skillId)
+            updateUiState { current -> current.copy(draft = current.draft.copy(skillImportStatus = "Removed imported skill.")) }
+        }
+    }
+
+    fun rescanImportedSkills() {
+        viewModelScope.launch {
+            val result = skillRepository.rescanImportedSkills()
+            val status = if (result == null) {
+                "No imported skills directory selected yet."
+            } else {
+                buildSkillImportStatus("Rescan", result)
+            }
+            updateUiState { current -> current.copy(draft = current.draft.copy(skillImportStatus = status)) }
+        }
     }
 
     fun onDraftMcpLabelChanged(value: String) = updateDraft { copy(draftMcpLabel = value) }
@@ -226,11 +265,14 @@ class SettingsViewModel @Inject constructor(
     private fun applyBaseline(baseline: SettingsBaselineState) {
         updateUiState { current ->
             if (current.isDirty) {
-                current.copy(baseline = baseline)
+                current.copy(
+                    baseline = baseline,
+                    draft = current.draft.mergeSkillStateFrom(baseline.toDraftState())
+                )
             } else {
                 current.copy(
                     baseline = baseline,
-                    draft = baseline.toDraftState(),
+                    draft = baseline.toDraftState().copy(skillImportStatus = current.draft.skillImportStatus),
                     isDirty = false,
                     mcpStatus = current.mcpStatus?.takeIf { it.isNotBlank() }
                 )
@@ -257,4 +299,28 @@ class SettingsViewModel @Inject constructor(
     private fun updateUiState(transform: (SettingsUiState) -> SettingsUiState) {
         uiStateInternal.value = transform(uiStateInternal.value)
     }
+
+    private fun buildSkillImportStatus(action: String, result: com.example.nanobot.core.skills.SkillImportResult): String {
+        return buildString {
+            append("$action complete: ${result.importedCount} imported, ${result.updatedCount} updated, ${result.skippedCount} skipped")
+            if (result.duplicateCount > 0) {
+                append(", ${result.duplicateCount} duplicate")
+            }
+            if (result.errors.isNotEmpty()) {
+                append(". Errors: ")
+                append(result.errors.joinToString("; "))
+            }
+        }
+    }
+}
+
+private fun SettingsDraftState.mergeSkillStateFrom(incoming: SettingsDraftState): SettingsDraftState {
+    val currentChecked = skillOptions.associate { it.id to it.checked }
+    return copy(
+        skillOptions = incoming.skillOptions.map { skill ->
+            skill.copy(checked = currentChecked[skill.id] ?: skill.checked)
+        },
+        skillsDirectoryUri = incoming.skillsDirectoryUri,
+        skillImportStatus = skillImportStatus
+    )
 }

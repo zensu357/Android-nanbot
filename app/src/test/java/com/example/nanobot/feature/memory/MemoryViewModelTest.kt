@@ -252,8 +252,11 @@ class MemoryViewModelTest {
 
     private class FakeSettingsConfigStore : SettingsConfigStore {
         override val configFlow: Flow<AgentConfig> = flowOf(AgentConfig(enableMemory = true))
+        override val skillsDirectoryUriFlow: Flow<String?> = flowOf(null)
 
         override suspend fun save(config: AgentConfig) = Unit
+
+        override suspend fun saveSkillsDirectoryUri(uri: String?) = Unit
     }
 
     private class FakeChatRepository : ChatRepository {
