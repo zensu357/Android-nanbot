@@ -110,6 +110,10 @@ class SendMessageUseCaseTest {
 
         override suspend fun selectSession(sessionId: String) = Unit
 
+        override suspend fun deleteSession(sessionId: String) = Unit
+
+        override suspend fun deleteSessionsOlderThan(cutoffMillis: Long) = Unit
+
         override suspend fun getMessages(sessionId: String): List<ChatMessage> = savedMessages.filter { it.sessionId == sessionId }
 
         override suspend fun getHistoryForModel(sessionId: String, maxMessages: Int): List<ChatMessage> =

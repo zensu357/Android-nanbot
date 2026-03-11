@@ -1,11 +1,14 @@
 package com.example.nanobot.core.worker
 
 import android.content.Context
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.OneTimeWorkRequest
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
-import com.example.nanobot.core.preferences.SettingsDataStore
+import com.example.nanobot.core.model.Reminder
 import com.example.nanobot.core.preferences.SettingsConfigStore
 import com.example.nanobot.domain.repository.HeartbeatRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -19,11 +22,21 @@ interface WorkerSchedulingController {
     suspend fun refreshScheduling()
 }
 
+interface ReminderWorkScheduler {
+    suspend fun scheduleReminder(reminder: Reminder, sessionId: String?)
+}
+
 interface WorkerScheduleBackend {
     fun enqueueUniquePeriodicWork(
         uniqueName: String,
         policy: ExistingPeriodicWorkPolicy,
         request: PeriodicWorkRequest
+    )
+
+    fun enqueueUniqueWork(
+        uniqueName: String,
+        policy: ExistingWorkPolicy,
+        request: OneTimeWorkRequest
     )
 
     fun cancelUniqueWork(uniqueName: String)
@@ -40,6 +53,14 @@ class WorkManagerScheduleBackend(
         workManager.enqueueUniquePeriodicWork(uniqueName, policy, request)
     }
 
+    override fun enqueueUniqueWork(
+        uniqueName: String,
+        policy: ExistingWorkPolicy,
+        request: OneTimeWorkRequest
+    ) {
+        workManager.enqueueUniqueWork(uniqueName, policy, request)
+    }
+
     override fun cancelUniqueWork(uniqueName: String) {
         workManager.cancelUniqueWork(uniqueName)
     }
@@ -50,7 +71,7 @@ class NanobotWorkerScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsDataStore: SettingsConfigStore,
     private val heartbeatRepository: HeartbeatRepository
-) : WorkerSchedulingController {
+) : WorkerSchedulingController, ReminderWorkScheduler {
     fun scheduleRecurringWork() {
         runBlocking {
             refreshScheduling()
@@ -59,6 +80,15 @@ class NanobotWorkerScheduler @Inject constructor(
 
     override suspend fun refreshScheduling() {
         refreshScheduling(WorkManagerScheduleBackend(WorkManager.getInstance(context)))
+    }
+
+    override suspend fun scheduleReminder(reminder: Reminder, sessionId: String?) {
+        scheduleReminder(
+            reminder = reminder,
+            backend = WorkManagerScheduleBackend(WorkManager.getInstance(context)),
+            sessionId = sessionId,
+            now = System.currentTimeMillis()
+        )
     }
 
     suspend fun refreshScheduling(backend: WorkerScheduleBackend) {
@@ -104,10 +134,30 @@ class NanobotWorkerScheduler @Inject constructor(
         )
     }
 
+    suspend fun scheduleReminder(
+        reminder: Reminder,
+        backend: WorkerScheduleBackend,
+        sessionId: String?,
+        now: Long = System.currentTimeMillis()
+    ) {
+        val initialDelayMillis = (reminder.triggerAt - now).coerceAtLeast(0L)
+        val reminderWork = OneTimeWorkRequestBuilder<ReminderWorker>()
+            .setInputData(ReminderWorker.buildInputData(reminder.id, sessionId))
+            .setInitialDelay(initialDelayMillis, TimeUnit.MILLISECONDS)
+            .build()
+        backend.enqueueUniqueWork(
+            reminderUniqueWorkName(reminder.id),
+            ExistingWorkPolicy.REPLACE,
+            reminderWork
+        )
+    }
+
     private companion object {
         const val MEMORY_CONSOLIDATION_WORK = "memory_consolidation_work"
         const val HEARTBEAT_WORK = "heartbeat_work"
         const val REMINDER_WORK = "reminder_work"
         const val SESSION_CLEANUP_WORK = "session_cleanup_work"
+
+        fun reminderUniqueWorkName(reminderId: String): String = "reminder_once_$reminderId"
     }
 }

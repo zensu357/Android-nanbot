@@ -208,6 +208,17 @@ class SubagentCoordinatorTest {
             selectedSessionIds += sessionId
         }
 
+        override suspend fun deleteSession(sessionId: String) {
+            sessions.removeAll { it.id == sessionId }
+            messages.remove(sessionId)
+        }
+
+        override suspend fun deleteSessionsOlderThan(cutoffMillis: Long) {
+            val targetIds = sessions.filter { it.updatedAt < cutoffMillis }.map { it.id }.toSet()
+            sessions.removeAll { it.id in targetIds }
+            targetIds.forEach(messages::remove)
+        }
+
         override suspend fun getMessages(sessionId: String): List<ChatMessage> = messages[sessionId].orEmpty()
 
         override suspend fun getHistoryForModel(sessionId: String, maxMessages: Int): List<ChatMessage> =

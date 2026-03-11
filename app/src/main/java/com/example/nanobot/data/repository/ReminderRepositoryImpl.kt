@@ -21,6 +21,9 @@ class ReminderRepositoryImpl @Inject constructor(
     override suspend fun getReminders(): List<Reminder> =
         reminderDao.getReminders().map { it.toModel() }
 
+    override suspend fun getReminder(id: String): Reminder? =
+        reminderDao.getReminder(id)?.toModel()
+
     override suspend fun getDueReminders(now: Long): List<Reminder> =
         reminderDao.getDueReminders(now, ReminderStatus.SCHEDULED).map { it.toModel() }
 

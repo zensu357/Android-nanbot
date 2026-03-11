@@ -2,6 +2,8 @@ package com.example.nanobot.core.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
@@ -60,9 +62,10 @@ data class LlmToolFunctionDto(
 )
 
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class LlmToolCallDto(
         val id: String,
-        val type: String = "function",
+        @EncodeDefault val type: String = "function",
         val function: LlmToolCallFunctionDto
 )
 

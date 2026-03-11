@@ -174,6 +174,8 @@ class HeartbeatWorkerTest {
         override suspend fun createSession(title: String, makeCurrent: Boolean, parentSessionId: String?, subagentDepth: Int): ChatSession = session
         override suspend fun upsertSession(session: ChatSession, makeCurrent: Boolean): ChatSession = session
         override suspend fun selectSession(sessionId: String) = Unit
+        override suspend fun deleteSession(sessionId: String) = Unit
+        override suspend fun deleteSessionsOlderThan(cutoffMillis: Long) = Unit
         override suspend fun getMessages(sessionId: String): List<ChatMessage> = savedMessages
         override suspend fun getHistoryForModel(sessionId: String, maxMessages: Int): List<ChatMessage> = savedMessages
         override suspend fun saveMessage(message: ChatMessage) { savedMessages += message }

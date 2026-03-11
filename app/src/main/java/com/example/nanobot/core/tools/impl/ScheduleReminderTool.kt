@@ -6,6 +6,7 @@ import com.example.nanobot.core.model.Reminder
 import com.example.nanobot.core.model.ReminderStatus
 import com.example.nanobot.core.tools.AgentTool
 import com.example.nanobot.core.tools.ToolAccessCategory
+import com.example.nanobot.core.worker.ReminderWorkScheduler
 import com.example.nanobot.domain.repository.ReminderRepository
 import java.time.Instant
 import java.time.ZoneId
@@ -23,7 +24,8 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
 class ScheduleReminderTool @Inject constructor(
-    private val reminderRepository: ReminderRepository
+    private val reminderRepository: ReminderRepository,
+    private val reminderWorkScheduler: ReminderWorkScheduler
 ) : AgentTool {
     override val name: String = "schedule_reminder"
     override val description: String = "Creates a reminder request that can be tracked and executed later"
@@ -76,6 +78,7 @@ class ScheduleReminderTool @Inject constructor(
             errorMessage = null
         )
         reminderRepository.upsert(reminder)
+        reminderWorkScheduler.scheduleReminder(reminder, runContext.sessionId)
 
         val formattedTrigger = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault())

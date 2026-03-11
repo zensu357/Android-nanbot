@@ -1,4 +1,4 @@
-package com.example.nanobot.feature.settings
+﻿package com.example.nanobot.feature.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,9 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,10 +67,21 @@ fun SettingsScreen(
     onSaveClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = {
+                    Column {
+                        Text("Settings")
+                        Text(
+                            text = "Scroll to the bottom to save",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -85,6 +98,27 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            SettingsGroup(title = "About") {
+                OutlinedButton(
+                    onClick = { uriHandler.openUri("https://github.com/zensu357/Android-nanobot") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("GitHub Repository")
+                }
+                OutlinedButton(
+                    onClick = { uriHandler.openUri("https://github.com/zensu357") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Author: zensu357")
+                }
+                OutlinedButton(
+                    onClick = { uriHandler.openUri("https://t.me/***") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Telegram Group")
+                }
+            }
 
             // LLM Provider Group
             SettingsGroup(title = "Provider Configuration") {

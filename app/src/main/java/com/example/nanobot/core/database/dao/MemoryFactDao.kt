@@ -21,6 +21,9 @@ interface MemoryFactDao {
     @Query("DELETE FROM memory_facts WHERE id = :factId")
     suspend fun deleteById(factId: String)
 
+    @Query("DELETE FROM memory_facts WHERE sourceSessionId = :sessionId")
+    suspend fun deleteBySessionId(sessionId: String)
+
     @Query("DELETE FROM memory_facts WHERE id NOT IN (SELECT id FROM memory_facts ORDER BY updatedAt DESC LIMIT :maxFacts)")
     suspend fun pruneToLatest(maxFacts: Int)
 

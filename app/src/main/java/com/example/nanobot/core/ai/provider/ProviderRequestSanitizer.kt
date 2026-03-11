@@ -3,7 +3,6 @@ package com.example.nanobot.core.ai.provider
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.LlmToolCallDto
-import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.serialization.json.JsonArray
@@ -84,21 +83,13 @@ class ProviderRequestSanitizer @Inject constructor() {
     private fun normalizeToolCallId(value: String, idMap: MutableMap<String, String>): String {
         return idMap.getOrPut(value) {
             when {
-                value.length == 9 && value.all(Char::isLetterOrDigit) -> value
-                value.isBlank() -> generateShortToolId()
-                else -> sha1Hex(value).take(9)
+                value.isBlank() -> generateToolCallId()
+                else -> value.trim()
             }
         }
     }
 
-    private fun sha1Hex(value: String): String {
-        val bytes = MessageDigest.getInstance("SHA-1").digest(value.toByteArray())
-        return buildString(bytes.size * 2) {
-            bytes.forEach { append("%02x".format(it)) }
-        }
-    }
-
-    private fun generateShortToolId(): String {
-        return UUID.randomUUID().toString().filter(Char::isLetterOrDigit).take(9)
+    private fun generateToolCallId(): String {
+        return "call_${UUID.randomUUID().toString().replace("-", "")}"
     }
 }

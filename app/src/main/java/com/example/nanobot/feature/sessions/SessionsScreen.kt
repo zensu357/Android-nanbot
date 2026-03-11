@@ -14,9 +14,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,6 +29,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -40,8 +48,12 @@ fun SessionsScreen(
     state: SessionsUiState,
     onCreateSession: () -> Unit,
     onSelectSession: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
+    onDismissError: () -> Unit,
     onBackClick: () -> Unit
 ) {
+    var pendingDeleteSession by remember { mutableStateOf<ChatSession?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -52,7 +64,10 @@ fun SessionsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onCreateSession) {
+                    IconButton(
+                        onClick = onCreateSession,
+                        enabled = !state.isCreating && !state.isDeleting
+                    ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = "New Session")
                     }
                 }
@@ -67,10 +82,50 @@ fun SessionsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Choose an existing conversation or start a fresh one.",
+                text = "Choose an existing conversation, start a fresh one, or delete sessions you no longer need.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            state.errorMessage?.let { errorMessage ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        TextButton(onClick = onDismissError) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
+            }
+
+            if (state.isCreating || state.isDeleting) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(strokeWidth = 2.dp)
+                    Text(
+                        text = if (state.isDeleting) "Deleting session..." else "Creating session...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             if (state.sessions.isEmpty()) {
                 Box(
@@ -79,7 +134,10 @@ fun SessionsScreen(
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    Button(onClick = onCreateSession) {
+                    Button(
+                        onClick = onCreateSession,
+                        enabled = !state.isCreating && !state.isDeleting
+                    ) {
                         Text("Create First Session")
                     }
                 }
@@ -92,12 +150,37 @@ fun SessionsScreen(
                         SessionCard(
                             session = session,
                             selected = session.id == state.currentSessionId,
-                            onClick = { onSelectSession(session.id) }
+                            actionsEnabled = !state.isCreating && !state.isDeleting,
+                            onClick = { onSelectSession(session.id) },
+                            onDeleteClick = { pendingDeleteSession = session }
                         )
                     }
                 }
             }
         }
+    }
+
+    pendingDeleteSession?.let { session ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteSession = null },
+            title = { Text("Delete session?") },
+            text = { Text("This removes the session, its messages, and related memory data tied to that session.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteSession(session.id)
+                        pendingDeleteSession = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteSession = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
@@ -105,7 +188,9 @@ fun SessionsScreen(
 private fun SessionCard(
     session: ChatSession,
     selected: Boolean,
-    onClick: () -> Unit
+    actionsEnabled: Boolean,
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     val containerColor = if (selected) {
         MaterialTheme.colorScheme.primaryContainer
@@ -116,7 +201,7 @@ private fun SessionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(enabled = actionsEnabled, onClick = onClick),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
@@ -143,12 +228,23 @@ private fun SessionCard(
                 )
             }
 
-            if (selected) {
-                Text(
-                    text = "Current",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (selected) {
+                    Text(
+                        text = "Current",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                IconButton(onClick = onDeleteClick, enabled = actionsEnabled) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Session"
+                    )
+                }
             }
         }
     }

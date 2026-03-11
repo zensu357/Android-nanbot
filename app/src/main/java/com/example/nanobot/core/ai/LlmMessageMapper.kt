@@ -43,7 +43,8 @@ fun ChatMessage.toLlmMessage(): LlmMessageDto {
         },
         toolCalls = toolCalls,
         toolCallId = toolCallId,
-        name = toolName
+        // OpenAI-style tool result messages should carry only `tool_call_id`, not a `name` field.
+        name = toolName?.takeIf { role != MessageRole.TOOL }
     )
 }
 

@@ -19,6 +19,8 @@ interface SessionRepository {
     ): ChatSession
     suspend fun upsertSession(session: ChatSession, makeCurrent: Boolean = false): ChatSession
     suspend fun selectSession(sessionId: String)
+    suspend fun deleteSession(sessionId: String)
+    suspend fun deleteSessionsOlderThan(cutoffMillis: Long)
     suspend fun getMessages(sessionId: String): List<ChatMessage>
     suspend fun getHistoryForModel(sessionId: String, maxMessages: Int = 500): List<ChatMessage>
     suspend fun saveMessage(message: ChatMessage)

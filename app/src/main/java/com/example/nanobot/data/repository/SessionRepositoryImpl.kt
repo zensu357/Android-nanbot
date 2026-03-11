@@ -1,7 +1,10 @@
 package com.example.nanobot.data.repository
 
 import com.example.nanobot.core.database.dao.MessageDao
+import com.example.nanobot.core.database.dao.MemoryFactDao
+import com.example.nanobot.core.database.dao.MemorySummaryDao
 import com.example.nanobot.core.database.dao.SessionDao
+import com.example.nanobot.core.database.NanobotDatabase
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.ChatSession
 import com.example.nanobot.core.preferences.SessionSelectionStore
@@ -10,6 +13,7 @@ import com.example.nanobot.data.mapper.toModel
 import com.example.nanobot.domain.repository.SessionRepository
 import javax.inject.Inject
 import javax.inject.Singleton
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -17,8 +21,11 @@ import kotlinx.coroutines.flow.map
 
 @Singleton
 class SessionRepositoryImpl @Inject constructor(
+    private val database: NanobotDatabase,
     private val sessionDao: SessionDao,
     private val messageDao: MessageDao,
+    private val memoryFactDao: MemoryFactDao,
+    private val memorySummaryDao: MemorySummaryDao,
     private val sessionSelectionStore: SessionSelectionStore
 ) : SessionRepository {
     override fun observeCurrentSession(): Flow<ChatSession?> = combine(
@@ -93,6 +100,24 @@ class SessionRepositoryImpl @Inject constructor(
         sessionSelectionStore.setSelectedSessionId(session.id)
     }
 
+    override suspend fun deleteSession(sessionId: String) {
+        val sessions = sessionDao.observeSessions().first()
+        val deleteIds = collectDeleteIds(rootSessionId = sessionId, sessions = sessions)
+        deleteSessions(deleteIds = deleteIds, allSessions = sessions)
+    }
+
+    override suspend fun deleteSessionsOlderThan(cutoffMillis: Long) {
+        val sessions = sessionDao.observeSessions().first()
+        val rootIds = sessions
+            .filter { it.updatedAt < cutoffMillis }
+            .map { it.id }
+            .toSet()
+        if (rootIds.isEmpty()) return
+
+        val deleteIds = collectDeleteIds(rootSessionIds = rootIds, sessions = sessions)
+        deleteSessions(deleteIds = deleteIds, allSessions = sessions)
+    }
+
     override suspend fun getMessages(sessionId: String): List<ChatMessage> {
         return messageDao.getMessages(sessionId).map { it.toModel() }
     }
@@ -117,5 +142,56 @@ class SessionRepositoryImpl @Inject constructor(
             session.copy(updatedAt = System.currentTimeMillis()),
             makeCurrent = makeCurrent
         )
+    }
+
+    private suspend fun deleteSessions(
+        deleteIds: Set<String>,
+        allSessions: List<com.example.nanobot.core.database.entity.SessionEntity>
+    ) {
+        if (deleteIds.isEmpty()) return
+
+        val selectedId = sessionSelectionStore.selectedSessionId.first()
+        val fallbackSessionId = allSessions
+            .firstOrNull { it.id !in deleteIds }
+            ?.id
+
+        database.withTransaction {
+            deleteIds.forEach { sessionId ->
+                memoryFactDao.deleteBySessionId(sessionId)
+                memorySummaryDao.deleteBySessionId(sessionId)
+                sessionDao.deleteById(sessionId)
+            }
+        }
+
+        if (selectedId in deleteIds) {
+            sessionSelectionStore.setSelectedSessionId(fallbackSessionId)
+        }
+    }
+
+    private fun collectDeleteIds(
+        rootSessionId: String,
+        sessions: List<com.example.nanobot.core.database.entity.SessionEntity>
+    ): Set<String> = collectDeleteIds(setOf(rootSessionId), sessions)
+
+    private fun collectDeleteIds(
+        rootSessionIds: Set<String>,
+        sessions: List<com.example.nanobot.core.database.entity.SessionEntity>
+    ): Set<String> {
+        if (rootSessionIds.isEmpty()) return emptySet()
+
+        val childrenByParentId = sessions
+            .filter { !it.parentSessionId.isNullOrBlank() }
+            .groupBy { it.parentSessionId }
+
+        val pendingIds = ArrayDeque(rootSessionIds)
+        val deleteIds = linkedSetOf<String>()
+        while (pendingIds.isNotEmpty()) {
+            val sessionId = pendingIds.removeFirst()
+            if (!deleteIds.add(sessionId)) continue
+            childrenByParentId[sessionId].orEmpty().forEach { child ->
+                pendingIds.addLast(child.id)
+            }
+        }
+        return deleteIds
     }
 }

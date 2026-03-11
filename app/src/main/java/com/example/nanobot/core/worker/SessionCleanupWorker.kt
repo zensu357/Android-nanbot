@@ -4,8 +4,7 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.example.nanobot.core.database.dao.MessageDao
-import com.example.nanobot.core.database.dao.SessionDao
+import com.example.nanobot.domain.repository.SessionRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
@@ -13,14 +12,12 @@ import dagger.assisted.AssistedInject
 class SessionCleanupWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val sessionDao: SessionDao,
-    private val messageDao: MessageDao
+    private val sessionRepository: SessionRepository
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
         return runCatching {
             val cutoff = System.currentTimeMillis() - THIRTY_DAYS_MILLIS
-            messageDao.deleteMessagesForSessionsOlderThan(cutoff)
-            sessionDao.deleteSessionsOlderThan(cutoff)
+            sessionRepository.deleteSessionsOlderThan(cutoff)
         }.fold(
             onSuccess = { Result.success() },
             onFailure = { Result.retry() }

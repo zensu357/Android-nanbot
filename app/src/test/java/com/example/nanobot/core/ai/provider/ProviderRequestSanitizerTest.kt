@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 class ProviderRequestSanitizerTest {
@@ -42,7 +43,40 @@ class ProviderRequestSanitizerTest {
 
         assertNull(sanitized.messages.first().content)
         assertEquals(1, sanitized.maxTokens)
-        assertEquals(9, sanitized.messages.first().toolCalls!!.first().id.length)
+        assertEquals("tool-call-12345", sanitized.messages.first().toolCalls!!.first().id)
+    }
+
+    @Test
+    fun generatesOpenAiStyleToolCallIdWhenBlank() {
+        val request = LlmChatRequest(
+            model = "gpt-4o-mini",
+            messages = listOf(
+                LlmMessageDto(
+                    role = "assistant",
+                    content = JsonNull,
+                    toolCalls = listOf(
+                        LlmToolCallDto(
+                            id = "",
+                            function = LlmToolCallFunctionDto(
+                                name = "notify_user",
+                                arguments = "{}"
+                            )
+                        )
+                    )
+                ),
+                LlmMessageDto(
+                    role = "tool",
+                    content = JsonPrimitive("done"),
+                    toolCallId = "placeholder-id"
+                )
+            )
+        )
+
+        val sanitized = sanitizer.sanitize(request)
+        val generatedId = sanitized.messages.first().toolCalls!!.first().id
+
+        assertTrue(generatedId.startsWith("call_"))
+        assertEquals("placeholder-id", sanitized.messages.last().toolCallId)
     }
 
     @Test

@@ -15,6 +15,9 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders ORDER BY triggerAt ASC")
     suspend fun getReminders(): List<ReminderEntity>
 
+    @Query("SELECT * FROM reminders WHERE id = :id LIMIT 1")
+    suspend fun getReminder(id: String): ReminderEntity?
+
     @Query("SELECT * FROM reminders WHERE triggerAt <= :now AND status = :scheduledStatus ORDER BY triggerAt ASC")
     suspend fun getDueReminders(now: Long, scheduledStatus: String): List<ReminderEntity>
 

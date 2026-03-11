@@ -26,6 +26,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.Retrofit
+import retrofit2.HttpException
 
 class OpenAiCompatibleProvider @Inject constructor(
     private val requestSanitizer: ProviderRequestSanitizer,
@@ -52,7 +53,15 @@ class OpenAiCompatibleProvider @Inject constructor(
                 temperature = route.resolvedTemperature
             )
         )
-        val response = createApi(config, route).createChatCompletion(sanitizedRequest)
+        val response = try {
+            createApi(config, route).createChatCompletion(sanitizedRequest)
+        } catch (exception: HttpException) {
+            val errorBody = runCatching { exception.response()?.errorBody()?.string().orEmpty() }
+                .getOrDefault("")
+                .trim()
+            val detail = errorBody.ifBlank { exception.message() ?: "HTTP ${exception.code()}" }
+            throw IllegalStateException("Provider API error ${exception.code()}: $detail", exception)
+        }
         val choice = response.choices.firstOrNull()
         val toolCalls = choice?.message?.toolCalls?.map { toolCall ->
             ToolCallRequest(

@@ -5,11 +5,12 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
+import kotlin.test.assertTrue
 import org.junit.Test
 
 class PayloadTest {
     @Test
-    fun testSerialization() {
+    fun serializesToolCallTypeForAssistantHistory() {
         val networkJson = Json {
             ignoreUnknownKeys = true
             explicitNulls = false
@@ -19,7 +20,24 @@ class PayloadTest {
             model = "ep-xxxx",
             messages = listOf(
                 LlmMessageDto(role = "system", content = JsonPrimitive("System prompt")),
-                LlmMessageDto(role = "user", content = JsonPrimitive("Hello"))
+                LlmMessageDto(
+                    role = "assistant",
+                    content = null,
+                    toolCalls = listOf(
+                        LlmToolCallDto(
+                            id = "call_123",
+                            function = LlmToolCallFunctionDto(
+                                name = "device_time",
+                                arguments = "{}"
+                            )
+                        )
+                    )
+                ),
+                LlmMessageDto(
+                    role = "tool",
+                    content = JsonPrimitive("Wednesday"),
+                    toolCallId = "call_123"
+                )
             ),
             tools = listOf(
                 LlmToolDefinitionDto(
@@ -34,8 +52,8 @@ class PayloadTest {
             toolChoice = "auto"
         )
 
-        println("=== JSON OUTPUT ===")
-        println(networkJson.encodeToString(req))
-        println("===================")
+        val encoded = networkJson.encodeToString(req)
+
+        assertTrue(encoded.contains("\"tool_calls\":[{\"id\":\"call_123\",\"type\":\"function\""))
     }
 }

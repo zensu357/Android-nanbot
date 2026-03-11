@@ -31,6 +31,7 @@ import com.example.nanobot.core.web.WebAccessConfigProvider
 import com.example.nanobot.core.web.WebAccessConfigProviderImpl
 import com.example.nanobot.core.web.WebSearchEndpointProvider
 import com.example.nanobot.core.worker.WorkerSchedulingController
+import com.example.nanobot.core.worker.ReminderWorkScheduler
 import com.example.nanobot.domain.repository.SkillRepository
 import com.example.nanobot.domain.repository.SessionRepository
 import com.example.nanobot.domain.repository.ChatRepository
@@ -121,6 +122,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideWorkerSchedulingController(scheduler: com.example.nanobot.core.worker.NanobotWorkerScheduler): WorkerSchedulingController = scheduler
+
+    @Provides
+    @Singleton
+    fun provideReminderWorkScheduler(scheduler: com.example.nanobot.core.worker.NanobotWorkerScheduler): ReminderWorkScheduler = scheduler
 
     @Provides
     fun provideSessionDao(database: NanobotDatabase): SessionDao = database.sessionDao()

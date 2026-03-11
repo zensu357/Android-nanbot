@@ -1,10 +1,13 @@
 package com.example.nanobot.core.worker
 
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.Reminder
+import com.example.nanobot.core.model.ReminderStatus
 import com.example.nanobot.core.preferences.SettingsConfigStore
 import com.example.nanobot.domain.repository.HeartbeatRepository
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +44,29 @@ class NanobotWorkerSchedulerTest {
         assertTrue("heartbeat_work" in backend.enqueued)
     }
 
+    @Test
+    fun schedulesOneTimeReminderWorkAtReminderTriggerTime() = runTest {
+        val backend = RecordingScheduleBackend()
+        val scheduler = createScheduler(
+            config = AgentConfig(enableBackgroundWork = true),
+            heartbeatEnabled = true
+        )
+        val now = 1_000L
+        val reminder = Reminder(
+            id = "reminder-1",
+            title = null,
+            message = "Ping",
+            triggerAt = now + 60_000L,
+            status = ReminderStatus.SCHEDULED,
+            createdAt = now
+        )
+
+        scheduler.scheduleReminder(reminder, backend, sessionId = "session-1", now = now)
+
+        assertTrue("reminder_once_reminder-1" in backend.enqueuedOneTime)
+        assertEquals(60_000L, backend.oneTimeDelays["reminder_once_reminder-1"])
+    }
+
     private fun createScheduler(
         config: AgentConfig,
         heartbeatEnabled: Boolean
@@ -54,6 +80,8 @@ class NanobotWorkerSchedulerTest {
 
     private class RecordingScheduleBackend : WorkerScheduleBackend {
         val enqueued = mutableListOf<String>()
+        val enqueuedOneTime = mutableListOf<String>()
+        val oneTimeDelays = mutableMapOf<String, Long>()
         val cancelled = mutableListOf<String>()
 
         override fun enqueueUniquePeriodicWork(
@@ -62,6 +90,15 @@ class NanobotWorkerSchedulerTest {
             request: androidx.work.PeriodicWorkRequest
         ) {
             enqueued += uniqueName
+        }
+
+        override fun enqueueUniqueWork(
+            uniqueName: String,
+            policy: androidx.work.ExistingWorkPolicy,
+            request: androidx.work.OneTimeWorkRequest
+        ) {
+            enqueuedOneTime += uniqueName
+            oneTimeDelays[uniqueName] = request.workSpec.initialDelay
         }
 
         override fun cancelUniqueWork(uniqueName: String) {

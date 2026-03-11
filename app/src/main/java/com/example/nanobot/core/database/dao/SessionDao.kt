@@ -20,6 +20,9 @@ interface SessionDao {
     @Query("SELECT * FROM sessions WHERE title = :title ORDER BY updatedAt DESC LIMIT 1")
     suspend fun getSessionByTitle(title: String): SessionEntity?
 
+    @Query("DELETE FROM sessions WHERE id = :sessionId")
+    suspend fun deleteById(sessionId: String)
+
     @Query("DELETE FROM sessions WHERE updatedAt < :cutoffMillis")
     suspend fun deleteSessionsOlderThan(cutoffMillis: Long)
 

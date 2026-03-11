@@ -277,6 +277,23 @@ class AgentOrchestratorIntegrationTest {
             }
         }
 
+        override suspend fun deleteSession(sessionId: String) {
+            sessions.removeAll { it.id == sessionId }
+            messages.remove(sessionId)
+            if (currentSession.value?.id == sessionId) {
+                currentSession.value = sessions.firstOrNull() ?: ChatSession(title = "New Chat")
+            }
+        }
+
+        override suspend fun deleteSessionsOlderThan(cutoffMillis: Long) {
+            val targetIds = sessions.filter { it.updatedAt < cutoffMillis }.map { it.id }.toSet()
+            sessions.removeAll { it.id in targetIds }
+            targetIds.forEach(messages::remove)
+            if (currentSession.value.id in targetIds) {
+                currentSession.value = sessions.firstOrNull() ?: ChatSession(title = "New Chat")
+            }
+        }
+
         override suspend fun getMessages(sessionId: String): List<ChatMessage> = messages[sessionId].orEmpty()
 
         override suspend fun getHistoryForModel(sessionId: String, maxMessages: Int): List<ChatMessage> =

@@ -83,6 +83,8 @@ fun AppNavGraph() {
                     viewModel.selectSession(it)
                     navController.popBackStack()
                 },
+                onDeleteSession = viewModel::deleteSession,
+                onDismissError = viewModel::clearError,
                 onBackClick = { navController.popBackStack() }
             )
         }
