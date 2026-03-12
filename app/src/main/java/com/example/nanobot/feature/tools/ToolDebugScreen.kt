@@ -116,6 +116,60 @@ fun ToolDebugScreen(
                 }
             }
 
+            state.webDiagnostics?.let { diagnostics ->
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Latest Web Diagnostics",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Request kind: ${diagnostics.requestKind}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Target: ${diagnostics.target}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            diagnostics.endpoint?.let { endpoint ->
+                                Text(
+                                    text = "Endpoint: $endpoint",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                text = "Proxy configured: ${diagnostics.proxyConfigured}${diagnostics.proxyValue?.let { " ($it)" } ?: ""}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "DNS resolution skipped due to proxy: ${diagnostics.dnsResolutionSkipped}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (diagnostics.allowlistedHosts.isNotEmpty()) {
+                                Text(
+                                    text = "Allowlisted endpoint hosts: ${diagnostics.allowlistedHosts.joinToString()}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             if (state.restrictToWorkspace) {
                 item {
                     Text(

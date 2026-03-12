@@ -21,8 +21,7 @@ class ProviderFactory @Inject constructor(
             apiKey = config.apiKey,
             baseUrl = config.baseUrl,
             model = config.model,
-            temperature = config.temperature,
-            providerHint = config.providerHint
+            temperature = config.temperature
         )
         val unsupportedAttachmentsMessage = buildUnsupportedAttachmentMessageIfNeeded(resolvedRoute, config)
         return when (resolvedRoute.providerType) {

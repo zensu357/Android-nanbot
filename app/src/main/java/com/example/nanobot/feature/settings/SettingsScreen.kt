@@ -504,7 +504,10 @@ fun SettingsScreen(
                     value = state.webProxy,
                     onValueChange = onWebProxyChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Web Proxy") }
+                    label = { Text("Web Proxy") },
+                    supportingText = {
+                        Text("Optional. Supports 127.0.0.1:7890, http://127.0.0.1:7890, or socks5://127.0.0.1:7890")
+                    }
                 )
                 OutlinedTextField(
                     value = state.systemPrompt,

@@ -53,7 +53,6 @@ class ProviderFactoryAttachmentTest {
         val customResult = factory.create(
             AgentConfig(
                 providerType = ProviderType.OPENAI_COMPATIBLE,
-                providerHint = "custom",
                 baseUrl = "https://example.com/",
                 model = "custom-model"
             )

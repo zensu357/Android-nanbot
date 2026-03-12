@@ -45,4 +45,31 @@ class ProviderRegistryTest {
 
         assertTrue(route.supportsImageAttachments)
     }
+
+    @Test
+    fun detectsGeminiFromBaseUrlEvenWhenModelNameLooksOpenAiLike() {
+        val route = ProviderRegistry.resolve(
+            providerType = ProviderType.OPENAI_COMPATIBLE,
+            apiKey = "",
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/",
+            model = "gpt-4o-mini",
+            temperature = 0.2
+        )
+
+        assertEquals("Gemini", route.providerLabel)
+    }
+
+    @Test
+    fun detectsGeminiFromModelNameWhenConfiguredDirectly() {
+        val route = ProviderRegistry.resolve(
+            providerType = ProviderType.OPENAI_COMPATIBLE,
+            apiKey = "",
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/",
+            model = "gemini-2.5-flash",
+            temperature = 0.2
+        )
+
+        assertEquals("Gemini", route.providerLabel)
+        assertTrue(route.supportsImageAttachments)
+    }
 }

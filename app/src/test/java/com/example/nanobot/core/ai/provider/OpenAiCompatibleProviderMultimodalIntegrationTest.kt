@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.mockwebserver.MockResponse
@@ -100,5 +101,70 @@ class OpenAiCompatibleProviderMultimodalIntegrationTest {
         assertTrue(requestBody.contains("data:image/jpeg;base64,"))
         assertTrue(requestBody.contains("Describe this image"))
         assertEquals("I can see the image.", result.content)
+    }
+
+    @Test
+    fun openAiCompatibleProviderReadsThoughtSignatureFromToolCallResponse() = runTest {
+        server.start()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "choices": [
+                        {
+                          "index": 0,
+                          "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                              {
+                                "id": "call_123",
+                                "type": "function",
+                                "thought_signature": "sig_abc",
+                                "function": {
+                                  "name": "web_search",
+                                  "arguments": "{}"
+                                }
+                              }
+                            ]
+                          },
+                          "finish_reason": "tool_calls"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val provider = OpenAiCompatibleProvider(
+            requestSanitizer = ProviderRequestSanitizer(),
+            attachmentStore = AttachmentStore(context)
+        )
+        val route = ProviderRegistry.resolve(
+            providerType = ProviderType.OPENAI_COMPATIBLE,
+            apiKey = "test-key",
+            baseUrl = server.url("/").toString(),
+            model = "gemini-2.5-flash",
+            temperature = 0.2
+        )
+
+        val result = provider.completeChat(
+            config = AgentConfig(providerType = ProviderType.OPENAI_COMPATIBLE, apiKey = "test-key"),
+            route = route,
+            request = LlmChatRequest(
+                model = "gemini-2.5-flash",
+                messages = listOf(
+                    LlmMessageDto(
+                        role = "user",
+                        content = JsonPrimitive("Search the web")
+                    )
+                )
+            )
+        )
+
+        assertEquals(1, result.toolCalls.size)
+        assertEquals("sig_abc", result.toolCalls.single().thoughtSignature)
+        assertNull(result.content)
     }
 }

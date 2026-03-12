@@ -48,6 +48,8 @@ class SystemPromptBuilder @Inject constructor(
                             add("- Before changing, editing, or executing anything, first check the available context.")
                             add("- If you are uncertain, explicitly say so instead of inventing confidence.")
                             add("- If a tool can improve correctness, prefer calling the tool over fabricating its result.")
+                            add("- When web searches or fetches already provide enough evidence to answer, stop using more web tools and synthesize the result.")
+                            add("- Avoid repeating the same web search query or refetching the same page unless the user explicitly asks for deeper verification.")
                             add("- Keep replies direct, concise, and executable.")
                             preset.operatingRules.forEach { add("- $it") }
                         }

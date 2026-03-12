@@ -72,6 +72,18 @@ class WebAccessServiceTest {
     }
 
     @Test
+    fun fetchReportsBlockedTargetWithContext() = runTest {
+        val service = createService()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.fetch("http://localhost/private", 500)
+        }
+
+        assertTrue(error.message.orEmpty().contains("Web fetch target"))
+        assertTrue(error.message.orEmpty().contains("blocked by network safety rules"))
+    }
+
+    @Test
     fun fetchRejectsUnsupportedContentType() = runTest {
         server.enqueue(
             MockResponse()
@@ -95,6 +107,26 @@ class WebAccessServiceTest {
             service.search("android", 5)
         }
         assertTrue(error.message.orEmpty().contains("Web Search API Key"))
+    }
+
+    @Test
+    fun searchReportsBlockedRedirectTargetWithContext() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(302)
+                .setHeader("Location", "http://localhost:${server.port}/private")
+        )
+        val service = createService(
+            config = AgentConfig(webSearchApiKey = "test-key"),
+            searchEndpoint = publicUrl("/search-redirect")
+        )
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.search("SSE index", 5)
+        }
+
+        assertTrue(error.message.orEmpty().contains("Redirect target for web search endpoint"))
+        assertTrue(error.message.orEmpty().contains("blocked by network safety rules"))
     }
 
     @Test
@@ -129,6 +161,73 @@ class WebAccessServiceTest {
     }
 
     @Test
+    fun searchUsesOverrideConfigWhenProvided() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "organic": [
+                        {
+                          "title": "Shanghai Composite Index",
+                          "link": "https://example.com/sse",
+                          "snippet": "Latest SSE market update."
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val service = createService(
+            config = AgentConfig(webSearchApiKey = "persisted-key"),
+            searchEndpoint = publicUrl("/search")
+        )
+
+        val result = service.search(
+            query = "SSE index",
+            limit = 2,
+            overrideConfig = AgentConfig(webSearchApiKey = "override-key")
+        )
+
+        val request = server.takeRequest()
+        assertEquals("override-key", request.getHeader("X-API-KEY"))
+        assertEquals("SSE index", result.query)
+    }
+
+    @Test
+    fun searchAllowsConfiguredSearchEndpointEvenWhenResolvedAddressIsPrivate() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "organic": [
+                        {
+                          "title": "Shanghai Composite Index",
+                          "link": "https://example.com/sse",
+                          "snippet": "Latest SSE market update."
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val service = createService(
+            config = AgentConfig(webSearchApiKey = "test-key"),
+            searchEndpoint = privateSearchUrl("/search")
+        )
+
+        val result = service.search("SSE index", 3)
+
+        assertEquals(1, result.results.size)
+        assertTrue(result.results.single().title.contains("Shanghai Composite"))
+    }
+
+    @Test
     fun fetchRejectsInvalidProxyConfiguration() = runTest {
         server.enqueue(
             MockResponse()
@@ -149,16 +248,21 @@ class WebAccessServiceTest {
         searchEndpoint: String = publicUrl("/search")
     ): WebAccessService {
         val testHost = TEST_HOST.lowercase()
+        val privateSearchHost = PRIVATE_SEARCH_HOST.lowercase()
         val requestGuard = WebRequestGuard(
             delegateDns = Dns.SYSTEM,
-            hostOverrides = mapOf(testHost to listOf(InetAddress.getByName("127.0.0.1"))),
+            hostOverrides = mapOf(
+                testHost to listOf(InetAddress.getByName("127.0.0.1")),
+                privateSearchHost to listOf(InetAddress.getByName("127.0.0.1"))
+            ),
             allowPrivateHostsForTesting = setOf(testHost)
         )
         return WebAccessService(
             configProvider = FakeConfigProvider(config),
             searchEndpointProvider = FakeSearchEndpointProvider(searchEndpoint),
             safeDns = SafeDns(requestGuard),
-            webRequestGuard = requestGuard
+            webRequestGuard = requestGuard,
+            webDiagnosticsStore = WebDiagnosticsStore()
         )
     }
 
@@ -166,6 +270,14 @@ class WebAccessServiceTest {
         return server.url(path)
             .newBuilder()
             .host(TEST_HOST)
+            .build()
+            .toString()
+    }
+
+    private fun privateSearchUrl(path: String): String {
+        return server.url(path)
+            .newBuilder()
+            .host(PRIVATE_SEARCH_HOST)
             .build()
             .toString()
     }
@@ -184,5 +296,6 @@ class WebAccessServiceTest {
 
     private companion object {
         const val TEST_HOST = "public.test"
+        const val PRIVATE_SEARCH_HOST = "search.internal"
     }
 }

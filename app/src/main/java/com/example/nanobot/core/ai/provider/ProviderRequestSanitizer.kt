@@ -14,13 +14,18 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 class ProviderRequestSanitizer @Inject constructor() {
-    fun sanitize(request: LlmChatRequest): LlmChatRequest {
+    fun sanitize(request: LlmChatRequest, route: ResolvedProviderRoute? = null): LlmChatRequest {
         val idMap = linkedMapOf<String, String>()
         val sanitizedMessages = request.messages.map { message -> sanitizeMessage(message, idMap) }
+        val providerSafeMessages = if (route?.spec?.name == "gemini") {
+            sanitizeGeminiToolHistory(sanitizedMessages)
+        } else {
+            sanitizedMessages
+        }
 
         return request.copy(
             maxTokens = request.maxTokens?.coerceAtLeast(1),
-            messages = sanitizedMessages
+            messages = providerSafeMessages
         )
     }
 
@@ -90,6 +95,37 @@ class ProviderRequestSanitizer @Inject constructor() {
     }
 
     private fun generateToolCallId(): String {
-        return "call_${UUID.randomUUID().toString().replace("-", "")}"
+        return "call_${UUID.randomUUID().toString().replace("-", "")}" 
+    }
+
+    private fun sanitizeGeminiToolHistory(messages: List<LlmMessageDto>): List<LlmMessageDto> {
+        val removedToolCallIds = linkedSetOf<String>()
+        val result = mutableListOf<LlmMessageDto>()
+
+        messages.forEach { message ->
+            if (message.role == "assistant" && !message.toolCalls.isNullOrEmpty()) {
+                val retainedToolCalls = message.toolCalls.filter { toolCall ->
+                    val keep = !toolCall.thoughtSignature.isNullOrBlank()
+                    if (!keep) {
+                        removedToolCallIds += toolCall.id
+                    }
+                    keep
+                }
+                when {
+                    retainedToolCalls.isNotEmpty() -> result += message.copy(toolCalls = retainedToolCalls)
+                    message.content != null && message.content !is JsonNull -> result += message.copy(toolCalls = null)
+                    else -> Unit
+                }
+                return@forEach
+            }
+
+            if (message.role == "tool" && message.toolCallId in removedToolCallIds) {
+                return@forEach
+            }
+
+            result += message
+        }
+
+        return result
     }
 }

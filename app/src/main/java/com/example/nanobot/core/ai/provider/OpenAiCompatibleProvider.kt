@@ -46,7 +46,8 @@ class OpenAiCompatibleProvider @Inject constructor(
             multimodalRequest.copy(
                 model = route.resolvedModel,
                 temperature = route.resolvedTemperature
-            )
+            ),
+            route = route
         )
         val response = try {
             createApi(config, route).createChatCompletion(sanitizedRequest)
@@ -62,7 +63,8 @@ class OpenAiCompatibleProvider @Inject constructor(
             ToolCallRequest(
                 id = toolCall.id,
                 name = toolCall.function.name,
-                arguments = parseArguments(toolCall.function.arguments)
+                arguments = parseArguments(toolCall.function.arguments),
+                thoughtSignature = toolCall.thoughtSignature
             )
         }.orEmpty()
 

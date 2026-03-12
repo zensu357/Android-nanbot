@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.buildJsonObject
 
 class LlmMessageMapperTest {
     @Test
@@ -51,5 +52,25 @@ class LlmMessageMapperTest {
         assertEquals("tool", llmMessage.role)
         assertEquals("call_123", llmMessage.toolCallId)
         assertNull(llmMessage.name)
+    }
+
+    @Test
+    fun preservesThoughtSignatureWhenMappingAssistantToolCalls() {
+        val result = com.example.nanobot.core.model.ProviderChatResult(
+            content = null,
+            toolCalls = listOf(
+                com.example.nanobot.core.model.ToolCallRequest(
+                    id = "call_123",
+                    name = "web_search",
+                    arguments = buildJsonObject {},
+                    thoughtSignature = "sig_abc"
+                )
+            )
+        )
+
+        val assistantMessage = result.toAssistantMessage("session-1")
+        val llmMessage = assistantMessage.toLlmMessage()
+
+        assertEquals("sig_abc", llmMessage.toolCalls?.single()?.thoughtSignature)
     }
 }

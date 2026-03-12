@@ -49,7 +49,7 @@ class PromptComposer @Inject constructor(
         )
         val historyExposure = historyExposurePlanner.planWithDiagnostics(config, history)
         historyExposure.messages.forEach { message ->
-            messages += message.toLlmMessage()
+            messages += message.toHistoryLlmMessage()
         }
         val runtimeContext = runtimeContextBuilder.buildWithDiagnostics(config, runContext, route, latestUserInput)
         messages += LlmMessageDto(

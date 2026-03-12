@@ -7,6 +7,7 @@ import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
 import com.example.nanobot.core.preferences.SettingsDataStore
 import com.example.nanobot.core.tools.ToolRegistry
+import com.example.nanobot.core.web.WebDiagnosticsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +24,8 @@ import kotlinx.serialization.json.put
 class ToolDebugViewModel @Inject constructor(
     private val toolRegistry: ToolRegistry,
     private val settingsDataStore: SettingsDataStore,
-    private val promptDiagnosticsStore: PromptDiagnosticsStore
+    private val promptDiagnosticsStore: PromptDiagnosticsStore,
+    private val webDiagnosticsStore: WebDiagnosticsStore
 ) : ViewModel() {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private var debugConfig = AgentConfig()
@@ -59,6 +61,11 @@ class ToolDebugViewModel @Inject constructor(
         viewModelScope.launch {
             promptDiagnosticsStore.snapshot.collect { snapshot ->
                 _uiState.value = _uiState.value.copy(promptDiagnostics = snapshot)
+            }
+        }
+        viewModelScope.launch {
+            webDiagnosticsStore.snapshot.collect { snapshot ->
+                _uiState.value = _uiState.value.copy(webDiagnostics = snapshot)
             }
         }
     }

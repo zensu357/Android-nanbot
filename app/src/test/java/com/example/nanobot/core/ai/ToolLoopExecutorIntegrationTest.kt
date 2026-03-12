@@ -201,6 +201,39 @@ class ToolLoopExecutorIntegrationTest {
         assertTrue(restrictedResult.newMessages.any { it.toolName == "mcp.github.issue_search" && it.content.orEmpty().contains("workspace-restricted mode policy") })
     }
 
+    @Test
+    fun requestsFinalAnswerAfterToolIterationLimitInsteadOfStoppingAbruptly() = runTest {
+        val chatRepository = ScriptedChatRepository(
+            responses = listOf(
+                ProviderChatResult(
+                    content = null,
+                    toolCalls = listOf(
+                        ToolCallRequest(
+                            id = "tool-web",
+                            name = "web_fetch",
+                            arguments = buildJsonObject { put("url", "https://example.com") }
+                        )
+                    )
+                ),
+                ProviderChatResult(content = "Based on the fetched page, here is the best answer I can provide now.")
+            )
+        )
+        val toolRegistry = ToolRegistry(ToolValidator(), ToolAccessPolicy()).apply {
+            register(StaticTool("web_fetch", ToolAccessCategory.EXTERNAL_READ_ONLY, "Fetched page summary"))
+        }
+        val executor = ToolLoopExecutor(chatRepository, toolRegistry)
+
+        val result = executor.execute(
+            sessionId = "tool-limit-session",
+            initialMessages = listOf(LlmMessageDto(role = "user", content = JsonPrimitive("Research this page"))),
+            config = AgentConfig(enableTools = true, maxToolIterations = 1)
+        )
+
+        assertTrue(result.finalResponse?.content.orEmpty().contains("best answer"))
+        assertTrue(chatRepository.requests.last().tools.isNullOrEmpty())
+        assertTrue(chatRepository.requests.last().messages.last().content?.jsonPrimitive?.content.orEmpty().contains("iteration limit reached"))
+    }
+
     private class ScriptedChatRepository(
         private val responses: List<ProviderChatResult>
     ) : ChatRepository {

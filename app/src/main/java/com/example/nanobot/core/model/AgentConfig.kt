@@ -15,7 +15,6 @@ data class AgentConfig(
     val webSearchApiKey: String = "",
     val webProxy: String = "",
     val restrictToWorkspace: Boolean = false,
-    val providerHint: String = "",
     val presetId: String = "assistant_default",
     val enabledSkillIds: List<String> = emptyList(),
     val maxSubagentDepth: Int = 1,

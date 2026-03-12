@@ -115,6 +115,8 @@ object ProviderRegistry {
             name = "gemini",
             keywords = setOf("gemini"),
             displayName = "Gemini",
+            detectByBaseKeyword = "generativelanguage.googleapis.com",
+            defaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/",
             requiresOpenAiChatEndpoint = true,
             supportsImageAttachments = true
         ),
@@ -198,13 +200,20 @@ object ProviderRegistry {
         }
     }
 
+    fun findByBaseUrl(apiBase: String?): ProviderSpec? {
+        val normalizedBase = apiBase?.lowercase().orEmpty()
+        if (normalizedBase.isBlank()) return null
+        return metadataProviders.firstOrNull { spec ->
+            spec.detectByBaseKeyword != null && normalizedBase.contains(spec.detectByBaseKeyword)
+        }
+    }
+
     fun resolve(
         providerType: ProviderType,
         apiKey: String,
         baseUrl: String,
         model: String,
-        temperature: Double,
-        providerHint: String = ""
+        temperature: Double
     ): ResolvedProviderRoute {
         val normalizedModel = model.trim().ifBlank { "gpt-4o-mini" }
         val explicitSpec = when (providerType) {
@@ -212,13 +221,17 @@ object ProviderRegistry {
             ProviderType.OPEN_ROUTER -> findByName("openrouter")
             ProviderType.OPENAI_COMPATIBLE -> null
         }
-        val hintedSpec = if (providerType == ProviderType.OPENAI_COMPATIBLE) findByName(providerHint) else null
         val detectedGateway = if (providerType == ProviderType.OPENAI_COMPATIBLE) {
             findGateway(apiKey = apiKey, apiBase = baseUrl)
         } else {
             null
         }
-        val metadataSpec = explicitSpec ?: detectedGateway ?: hintedSpec ?: findByModel(normalizedModel) ?: findByName("custom")!!
+        val detectedByBaseUrl = if (providerType == ProviderType.OPENAI_COMPATIBLE && detectedGateway == null) {
+            findByBaseUrl(baseUrl)
+        } else {
+            null
+        }
+        val metadataSpec = explicitSpec ?: detectedGateway ?: detectedByBaseUrl ?: findByModel(normalizedModel) ?: findByName("custom")!!
         val resolvedProviderType = explicitSpec?.providerType ?: detectedGateway?.providerType ?: providerType
         val resolvedBaseUrl = baseUrl.trim().ifBlank {
             metadataSpec.defaultBaseUrl ?: "https://api.openai.com/v1/"

@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
@@ -66,7 +67,8 @@ data class LlmToolFunctionDto(
 data class LlmToolCallDto(
         val id: String,
         @EncodeDefault val type: String = "function",
-        val function: LlmToolCallFunctionDto
+        val function: LlmToolCallFunctionDto,
+        @SerialName("thought_signature") @JsonNames("thoughtSignature") val thoughtSignature: String? = null
 )
 
 @Serializable data class LlmToolCallFunctionDto(val name: String, val arguments: String)
@@ -78,7 +80,12 @@ data class LlmUsageDto(
         @SerialName("total_tokens") val totalTokens: Int? = null
 )
 
-data class ToolCallRequest(val id: String, val name: String, val arguments: JsonObject)
+data class ToolCallRequest(
+        val id: String,
+        val name: String,
+        val arguments: JsonObject,
+        val thoughtSignature: String? = null
+)
 
 data class ProviderChatResult(
         val content: String?,

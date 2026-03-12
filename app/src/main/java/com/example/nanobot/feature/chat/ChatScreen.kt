@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +51,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.nanobot.core.model.Attachment
@@ -66,6 +72,7 @@ fun ChatScreen(
     onRemovePendingAttachment: (String) -> Unit,
     onSendClick: () -> Unit,
     onCancelClick: () -> Unit,
+    onToggleToolMessage: (String) -> Unit,
     onOpenSessions: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -139,7 +146,11 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(state.messages, key = { it.id }) { message ->
-                        MessageBubble(message = message)
+                        MessageBubble(
+                            message = message,
+                            expanded = message.id in state.expandedToolMessageIds,
+                            onToggleToolMessage = onToggleToolMessage
+                        )
                     }
                 }
             }
@@ -246,10 +257,18 @@ fun ChatScreen(
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(
+    message: ChatMessage,
+    expanded: Boolean,
+    onToggleToolMessage: (String) -> Unit
+) {
     val isUser = message.role == MessageRole.USER
+    val isTool = message.role == MessageRole.TOOL
+    val toolPresentation = if (isTool) presentToolMessage(message) else null
     val containerColor = if (isUser) {
         MaterialTheme.colorScheme.primaryContainer
+    } else if (isTool) {
+        MaterialTheme.colorScheme.toolContainerColor(toolPresentation?.kind ?: ToolMessageKind.OTHER)
     } else {
         MaterialTheme.colorScheme.secondaryContainer
     }
@@ -261,17 +280,75 @@ private fun MessageBubble(message: ChatMessage) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = containerColor),
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .clickable(enabled = isTool) { onToggleToolMessage(message.id) }
         ) {
             Column(
                 modifier = Modifier.padding(14.dp)
             ) {
+                if (isTool && !expanded) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        toolPresentation?.let { presentation ->
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        MaterialTheme.colorScheme.toolBadgeColor(presentation.kind),
+                                        CircleShape
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = presentation.badgeLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                        Text(
+                            text = (message.toolName ?: "tool_output").replace('_', ' '),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = message.createdAt.toReadableTime(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    return@Column
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    toolPresentation?.let { presentation ->
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.toolBadgeColor(presentation.kind),
+                                    CircleShape
+                                )
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = presentation.badgeLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
                     Text(
-                        text = if (isUser) "You" else "Nanobot",
+                        text = when {
+                            isUser -> "You"
+                            isTool -> "Tool"
+                            else -> "Nanobot"
+                        },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -281,11 +358,23 @@ private fun MessageBubble(message: ChatMessage) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                if (isTool) {
+                    Text(
+                        text = buildString {
+                            append(message.toolName ?: "tool_output")
+                            append(if (expanded) " • tap to collapse" else " • tap to expand")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
                 Text(
                     text = when {
-                        !message.content.isNullOrBlank() -> message.content.orEmpty()
-                        message.role == MessageRole.TOOL -> "Tool result available"
-                        else -> "Working..."
+                        isTool && !expanded -> AnnotatedString(toolSummaryText(message))
+                        !message.content.isNullOrBlank() -> parseBoldText(message.content.orEmpty())
+                        message.role == MessageRole.TOOL -> AnnotatedString("Tool result available")
+                        else -> AnnotatedString("Working...")
                     },
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -302,6 +391,30 @@ private fun MessageBubble(message: ChatMessage) {
             }
         }
     }
+}
+
+private fun ColorScheme.toolContainerColor(kind: ToolMessageKind) = when (kind) {
+    ToolMessageKind.WEB_SEARCH -> tertiaryContainer
+    ToolMessageKind.WEB_FETCH -> tertiaryContainer.copy(alpha = 0.92f)
+    ToolMessageKind.WORKSPACE_WRITE -> primaryContainer.copy(alpha = 0.88f)
+    ToolMessageKind.WORKSPACE_READ -> secondaryContainer.copy(alpha = 0.92f)
+    ToolMessageKind.DELEGATION -> tertiaryContainer.copy(alpha = 0.85f)
+    ToolMessageKind.MCP -> primaryContainer.copy(alpha = 0.82f)
+    ToolMessageKind.MEMORY -> secondaryContainer.copy(alpha = 0.88f)
+    ToolMessageKind.NOTIFY -> tertiaryContainer.copy(alpha = 0.8f)
+    ToolMessageKind.OTHER -> tertiaryContainer
+}
+
+private fun ColorScheme.toolBadgeColor(kind: ToolMessageKind) = when (kind) {
+    ToolMessageKind.WEB_SEARCH -> tertiary
+    ToolMessageKind.WEB_FETCH -> tertiary
+    ToolMessageKind.WORKSPACE_WRITE -> primary
+    ToolMessageKind.WORKSPACE_READ -> secondary
+    ToolMessageKind.DELEGATION -> tertiary
+    ToolMessageKind.MCP -> primary
+    ToolMessageKind.MEMORY -> secondary
+    ToolMessageKind.NOTIFY -> tertiary
+    ToolMessageKind.OTHER -> primary
 }
 
 @Composable
@@ -329,22 +442,48 @@ private fun AttachmentSummary(attachment: Attachment) {
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Box(
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f)
         ) {
-            Text(typeLabel, style = MaterialTheme.typography.labelMedium)
+            Box(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(typeLabel, style = MaterialTheme.typography.labelMedium)
+            }
+            Column {
+                Text(attachment.displayName, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = "${attachment.mimeType} • ${attachment.sizeBytes} bytes",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
-        Column {
-            Text(attachment.displayName, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                text = "${attachment.mimeType} • ${attachment.sizeBytes} bytes",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    }
+}
+
+private fun parseBoldText(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        val pattern = Regex("""\*\*(.*?)\*\*""")
+        var lastIndex = 0
+        pattern.findAll(text).forEach { matchResult ->
+            // 添加匹配前的普通文本
+            append(text.substring(lastIndex, matchResult.range.first))
+            // 添加加粗文本（不含星号）
+            withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                append(matchResult.groupValues[1])
+            }
+            lastIndex = matchResult.range.last + 1
+        }
+        // 添加剩余文本
+        if (lastIndex < text.length) {
+            append(text.substring(lastIndex))
         }
     }
 }

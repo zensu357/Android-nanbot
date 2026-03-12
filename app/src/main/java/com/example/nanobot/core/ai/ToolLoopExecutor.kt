@@ -6,11 +6,13 @@ import com.example.nanobot.core.model.AgentRunContext
 import com.example.nanobot.core.model.AgentTurnResult
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.LlmChatRequest
+import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.domain.repository.ChatRepository
 import com.example.nanobot.core.tools.ToolRegistry
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.JsonPrimitive
 
 class ToolLoopExecutor @Inject constructor(
     private val chatRepository: ChatRepository,
@@ -83,15 +85,67 @@ class ToolLoopExecutor @Inject constructor(
             }
         }
 
-        onProgress(AgentProgressEvent.Error("Maximum tool-iteration limit reached."))
-        val fallback = ChatMessage(
+        onProgress(AgentProgressEvent.Error("Maximum tool-iteration limit reached. Requesting a final answer without further tool calls."))
+        val fallback = requestFinalAnswerAfterToolLimit(
             sessionId = sessionId,
-            role = MessageRole.ASSISTANT,
-            content = "I reached the maximum tool-iteration limit before finishing this task."
+            messages = messages,
+            emittedMessages = emittedMessages,
+            config = config,
+            onProgress = onProgress,
+            finalizationReason = "Maximum tool-iteration limit reached."
         )
         return AgentTurnResult(
             newMessages = emittedMessages + fallback,
             finalResponse = fallback
+        )
+    }
+
+    private suspend fun requestFinalAnswerAfterToolLimit(
+        sessionId: String,
+        messages: MutableList<com.example.nanobot.core.model.LlmMessageDto>,
+        emittedMessages: MutableList<ChatMessage>,
+        config: AgentConfig,
+        onProgress: suspend (AgentProgressEvent) -> Unit,
+        finalizationReason: String
+    ): ChatMessage {
+        val finalizationPrompt = LlmMessageDto(
+            role = MessageRole.USER.name.lowercase(),
+            content = JsonPrimitive(
+                "$finalizationReason Do not call any more tools. Use only the conversation and tool results already available, then provide the best possible final answer now."
+            )
+        )
+        messages += finalizationPrompt
+        return runCatching {
+            onProgress(AgentProgressEvent.Thinking)
+            val response = chatRepository.completeChat(
+                request = LlmChatRequest(
+                    model = config.model,
+                    messages = messages,
+                    temperature = config.temperature,
+                    maxTokens = config.maxTokens,
+                    tools = null,
+                    toolChoice = null
+                ),
+                config = config
+            )
+            val finalAssistant = response.toAssistantMessage(sessionId)
+            if (!finalAssistant.content.isNullOrBlank()) {
+                onProgress(AgentProgressEvent.Finishing)
+                onProgress(AgentProgressEvent.Completed)
+                return@runCatching finalAssistant
+            }
+            fallbackLimitMessage(sessionId)
+        }.getOrElse { throwable ->
+            onProgress(AgentProgressEvent.Error(throwable.message ?: "Failed to finalize after hitting the tool limit."))
+            fallbackLimitMessage(sessionId)
+        }
+    }
+
+    private fun fallbackLimitMessage(sessionId: String): ChatMessage {
+        return ChatMessage(
+            sessionId = sessionId,
+            role = MessageRole.ASSISTANT,
+            content = "I reached the maximum tool-iteration limit before finishing this task. Please continue the conversation if you want me to keep working from the results gathered so far."
         )
     }
 }

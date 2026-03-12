@@ -69,7 +69,6 @@ class OpenAiCompatibleProviderAttachmentTest {
         val result = factory.create(
             AgentConfig(
                 providerType = ProviderType.OPENAI_COMPATIBLE,
-                providerHint = "custom",
                 baseUrl = "https://example.com/",
                 model = "custom-model"
             )

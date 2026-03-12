@@ -40,7 +40,8 @@ class AzureOpenAiProvider @Inject constructor(
             multimodalRequest.copy(
                 model = route.resolvedModel,
                 temperature = route.resolvedTemperature
-            )
+            ),
+            route = route
         )
         val endpoint = route.effectiveBaseUrl.cleanCustomBaseUrl() +
             "openai/deployments/${route.resolvedModel}/chat/completions?api-version=2024-10-21"
@@ -99,7 +100,9 @@ class AzureOpenAiProvider @Inject constructor(
                     name = function["name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                     arguments = networkJson.parseToJsonElement(
                         function["arguments"]?.jsonPrimitive?.contentOrNull ?: "{}"
-                    ).jsonObject
+                    ).jsonObject,
+                    thoughtSignature = obj["thought_signature"]?.jsonPrimitive?.contentOrNull
+                        ?: obj["thoughtSignature"]?.jsonPrimitive?.contentOrNull
                 )
             }.orEmpty()
 

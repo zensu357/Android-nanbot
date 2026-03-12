@@ -70,6 +70,7 @@ fun AppNavGraph() {
                 onRemovePendingAttachment = viewModel::removePendingAttachment,
                 onSendClick = viewModel::sendMessage,
                 onCancelClick = viewModel::cancelSend,
+                onToggleToolMessage = viewModel::toggleToolMessage,
                 onOpenSessions = { navController.navigate(Destinations.Sessions.route) },
                 onOpenSettings = { navController.navigate(Destinations.Settings.route) }
             )

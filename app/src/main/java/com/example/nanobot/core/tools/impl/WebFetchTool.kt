@@ -20,7 +20,7 @@ class WebFetchTool @Inject constructor(
     private val webAccessRepository: WebAccessRepository
 ) : AgentTool {
     override val name: String = "web_fetch"
-    override val description: String = "Fetches a public http/https page, extracts readable text, and returns a compact summary body"
+    override val description: String = "Fetches a public http/https page, extracts readable text, and returns a compact summary body; fetch only when the page is likely to answer the remaining question"
     override val accessCategory: ToolAccessCategory = ToolAccessCategory.EXTERNAL_READ_ONLY
     override val availabilityHint: String = "Public web read-only access; blocked in workspace-restricted mode"
     override val parametersSchema: JsonObject = buildJsonObject {
@@ -28,11 +28,11 @@ class WebFetchTool @Inject constructor(
         putJsonObject("properties") {
             putJsonObject("url") {
                 put("type", "string")
-                put("description", "Public http/https URL to fetch")
+                put("description", "Public http/https URL to fetch. Prefer pages that directly answer the outstanding question.")
             }
             putJsonObject("maxChars") {
                 put("type", "integer")
-                put("description", "Optional max characters to return; defaults to 4000")
+                put("description", "Optional max characters to return; defaults to 4000. Use a modest limit when only a small excerpt is needed.")
             }
         }
         put("required", buildJsonArray { add(JsonPrimitive("url")) })
@@ -46,7 +46,7 @@ class WebFetchTool @Inject constructor(
         }
 
         return runCatching {
-            val result = webAccessRepository.fetch(url, maxChars)
+            val result = webAccessRepository.fetch(url, maxChars, config)
             buildString {
                 appendLine("URL: ${result.url}")
                 result.title?.let { appendLine("Title: $it") }

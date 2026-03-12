@@ -54,6 +54,26 @@ fun ChatMessage.toLlmMessage(): LlmMessageDto {
     )
 }
 
+fun ChatMessage.toHistoryLlmMessage(): LlmMessageDto {
+    if (attachments.isEmpty()) return toLlmMessage()
+
+    val attachmentCount = attachments.size
+    val historyNote = if (attachmentCount == 1) {
+        "[A prior attachment was omitted from replay for provider compatibility. Ask the user to re-attach it if needed.]"
+    } else {
+        "[$attachmentCount prior attachments were omitted from replay for provider compatibility. Ask the user to re-attach them if needed.]"
+    }
+    val mergedContent = listOfNotNull(
+        content?.takeIf { it.isNotBlank() },
+        historyNote
+    ).joinToString("\n\n")
+
+    return toLlmMessage().copy(
+        content = JsonPrimitive(mergedContent.ifBlank { historyNote }),
+        attachments = emptyList()
+    )
+}
+
 fun ProviderChatResult.toAssistantMessage(sessionId: String): ChatMessage {
     val encodedToolCalls = if (toolCalls.isEmpty()) {
         null
@@ -61,7 +81,7 @@ fun ProviderChatResult.toAssistantMessage(sessionId: String): ChatMessage {
         mapperJson.encodeToString(toolCalls.map { it.toDto() })
     }
 
-    return ChatMessage(
+        return ChatMessage(
         sessionId = sessionId,
         role = MessageRole.ASSISTANT,
         content = content,
@@ -76,5 +96,6 @@ private fun ToolCallRequest.toDto(): LlmToolCallDto = LlmToolCallDto(
     function = com.example.nanobot.core.model.LlmToolCallFunctionDto(
         name = name,
         arguments = arguments.toString()
-    )
+    ),
+    thoughtSignature = thoughtSignature
 )

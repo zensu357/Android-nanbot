@@ -33,6 +33,7 @@ class SystemPromptBuilderTest {
         assertTrue(prompt.contains("## Preset Instructions"))
         assertTrue(prompt.contains("## Custom User Instructions"))
         assertTrue(prompt.contains("Always explain the implementation plan before coding."))
+        assertTrue(prompt.contains("stop using more web tools and synthesize the result"))
     }
 
     @Test

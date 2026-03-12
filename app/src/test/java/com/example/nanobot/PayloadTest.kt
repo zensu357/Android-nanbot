@@ -29,7 +29,8 @@ class PayloadTest {
                             function = LlmToolCallFunctionDto(
                                 name = "device_time",
                                 arguments = "{}"
-                            )
+                            ),
+                            thoughtSignature = "sig_abc"
                         )
                     )
                 ),
@@ -55,5 +56,6 @@ class PayloadTest {
         val encoded = networkJson.encodeToString(req)
 
         assertTrue(encoded.contains("\"tool_calls\":[{\"id\":\"call_123\",\"type\":\"function\""))
+        assertTrue(encoded.contains("\"thought_signature\":\"sig_abc\""))
     }
 }

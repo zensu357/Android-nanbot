@@ -1,5 +1,6 @@
 package com.example.nanobot.core.web
 
+import com.example.nanobot.core.model.AgentConfig
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -15,6 +16,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Dns
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -27,20 +29,40 @@ class WebAccessService @Inject constructor(
     private val configProvider: WebAccessConfigProvider,
     private val searchEndpointProvider: WebSearchEndpointProvider,
     private val safeDns: SafeDns,
-    private val webRequestGuard: WebRequestGuard
+    private val webRequestGuard: WebRequestGuard,
+    private val webDiagnosticsStore: WebDiagnosticsStore
 ) {
     private val parserJson = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
     }
 
-    suspend fun fetch(url: String, maxChars: Int): WebFetchResult = withContext(Dispatchers.IO) {
-        val config = configProvider.getConfig()
-        val normalizedUrl = webRequestGuard.validateUrl(url)
+    suspend fun fetch(url: String, maxChars: Int, overrideConfig: AgentConfig? = null): WebFetchResult = withContext(Dispatchers.IO) {
+        val config = overrideConfig ?: configProvider.getConfig()
+        val proxy = parseProxy(config.webProxy)
+        publishDiagnostics(
+            requestKind = "web_fetch",
+            target = url,
+            proxyValue = config.webProxy,
+            dnsResolutionSkipped = proxy != null
+        )
+        val normalizedUrl = runCatching {
+            webRequestGuard.validateUrl(url, resolveDns = proxy == null)
+        }.getOrElse { throwable ->
+            throw IllegalArgumentException(
+                "Web fetch target '$url' was blocked by network safety rules: ${throwable.message}",
+                throwable
+            )
+        }
         val charLimit = maxChars.coerceIn(200, MAX_FETCH_CHARS)
         val byteLimit = charLimit * MAX_BYTES_PER_CHAR
 
-        executeWithRedirects(buildHttpClient(config.webProxy), normalizedUrl) { resolvedUrl ->
+        executeWithRedirects(
+            buildHttpClient(proxy),
+            normalizedUrl,
+            requestLabel = "web fetch target",
+            resolveDns = proxy == null
+        ) { resolvedUrl ->
             Request.Builder()
                 .url(resolvedUrl)
                 .get()
@@ -72,8 +94,9 @@ class WebAccessService @Inject constructor(
         }
     }
 
-    suspend fun search(query: String, limit: Int): WebSearchResult = withContext(Dispatchers.IO) {
-        val config = configProvider.getConfig()
+    suspend fun search(query: String, limit: Int, overrideConfig: AgentConfig? = null): WebSearchResult = withContext(Dispatchers.IO) {
+        val config = overrideConfig ?: configProvider.getConfig()
+        val proxy = parseProxy(config.webProxy)
         val apiKey = config.webSearchApiKey.trim()
         if (apiKey.isBlank()) {
             throw IllegalStateException("Web search is not configured. Please set Web Search API Key in Settings.")
@@ -85,11 +108,38 @@ class WebAccessService @Inject constructor(
         }
 
         val resultLimit = limit.coerceIn(1, MAX_SEARCH_RESULTS)
-        val searchEndpoint = webRequestGuard.validateUrl(searchEndpointProvider.getSearchEndpoint())
+        val rawSearchEndpoint = searchEndpointProvider.getSearchEndpoint()
+        val allowedSearchHosts = allowedPrivateSearchHosts(rawSearchEndpoint)
+        publishDiagnostics(
+            requestKind = "web_search",
+            target = normalizedQuery,
+            endpoint = rawSearchEndpoint,
+            proxyValue = config.webProxy,
+            dnsResolutionSkipped = proxy != null,
+            allowlistedHosts = allowedSearchHosts.toList()
+        )
+        val searchEndpoint = runCatching {
+            webRequestGuard.validateUrl(
+                rawSearchEndpoint,
+                allowResolvedPrivateHosts = allowedSearchHosts,
+                resolveDns = proxy == null
+            )
+        }.getOrElse { throwable ->
+            throw IllegalArgumentException(
+                "Configured web search endpoint '$rawSearchEndpoint' was blocked by network safety rules: ${throwable.message}",
+                throwable
+            )
+        }
         val requestBody = """{"q":${parserJson.encodeToString(String.serializer(), normalizedQuery)},"num":$resultLimit}"""
             .toRequestBody("application/json".toMediaType())
 
-        executeWithRedirects(buildHttpClient(config.webProxy), searchEndpoint) { resolvedUrl ->
+        executeWithRedirects(
+            buildHttpClient(proxy, allowedSearchHosts),
+            searchEndpoint,
+            allowResolvedPrivateHosts = allowedSearchHosts,
+            requestLabel = "web search endpoint",
+            resolveDns = proxy == null
+        ) { resolvedUrl ->
             Request.Builder()
                 .url(resolvedUrl)
                 .post(requestBody)
@@ -126,22 +176,63 @@ class WebAccessService @Inject constructor(
         }
     }
 
-    private fun buildHttpClient(proxyValue: String): OkHttpClient {
+    private fun buildHttpClient(proxy: Proxy?, allowResolvedPrivateHosts: Set<String> = emptySet()): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(Duration.ofSeconds(30))
             .readTimeout(Duration.ofSeconds(60))
             .writeTimeout(Duration.ofSeconds(30))
             .followRedirects(false)
             .followSslRedirects(false)
-            .dns(safeDns)
+            .dns(
+                if (proxy == null) {
+                    object : Dns {
+                        override fun lookup(hostname: String) =
+                            webRequestGuard.lookupAndValidate(hostname, allowResolvedPrivateHosts)
+                    }
+                } else {
+                    Dns.SYSTEM
+                }
+            )
 
-        parseProxy(proxyValue)?.let { builder.proxy(it) }
+        proxy?.let { builder.proxy(it) }
         return builder.build()
+    }
+
+    private fun allowedPrivateSearchHosts(endpoint: String): Set<String> {
+        return setOfNotNull(endpoint.toHttpUrlOrNull()?.host)
+    }
+
+    private fun publishDiagnostics(
+        requestKind: String,
+        target: String,
+        endpoint: String? = null,
+        proxyValue: String,
+        dnsResolutionSkipped: Boolean,
+        allowlistedHosts: List<String> = emptyList()
+    ) {
+        webDiagnosticsStore.publish(
+            WebDiagnosticsSnapshot(
+                requestKind = requestKind,
+                target = target,
+                endpoint = endpoint,
+                proxyConfigured = proxyValue.isNotBlank(),
+                proxyValue = proxyValue.ifBlank { null },
+                dnsResolutionSkipped = dnsResolutionSkipped,
+                allowlistedHosts = allowlistedHosts
+            )
+        )
     }
 
     private fun parseProxy(proxyValue: String): Proxy? {
         val trimmed = proxyValue.trim()
         if (trimmed.isBlank()) return null
+
+        SHORTHAND_PROXY_REGEX.matchEntire(trimmed)?.let { match ->
+            val host = match.groupValues[1]
+            val port = match.groupValues[2].toIntOrNull()
+                ?: throw IllegalArgumentException("Invalid web proxy configuration.")
+            return Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))
+        }
 
         val uri = runCatching { URI(trimmed) }.getOrElse {
             throw IllegalArgumentException("Invalid web proxy configuration.")
@@ -159,6 +250,9 @@ class WebAccessService @Inject constructor(
     private fun executeWithRedirects(
         client: OkHttpClient,
         initialUrl: okhttp3.HttpUrl,
+        allowResolvedPrivateHosts: Set<String> = emptySet(),
+        requestLabel: String = "web request",
+        resolveDns: Boolean = true,
         requestBuilder: (okhttp3.HttpUrl) -> Request
     ): Response {
         var currentUrl = initialUrl
@@ -177,8 +271,23 @@ class WebAccessService @Inject constructor(
                 ?: run {
                     response.close()
                     throw IllegalStateException("Redirect response did not include a Location header.")
-                }
-            val nextUrl = webRequestGuard.validateRedirectTarget(currentUrl, location)
+            }
+            val nextUrl = runCatching {
+                webRequestGuard.validateRedirectTarget(currentUrl, location, allowResolvedPrivateHosts, resolveDns)
+            }.getOrElse { throwable ->
+                throw IllegalArgumentException(
+                    buildString {
+                        append("Redirect target for $requestLabel was blocked by network safety rules: ")
+                        append(throwable.message)
+                        if (allowResolvedPrivateHosts.isNotEmpty()) {
+                            append(". Only the configured endpoint host(s) ")
+                            append(allowResolvedPrivateHosts.joinToString())
+                            append(" are allowed to bypass private-address resolution checks.")
+                        }
+                    },
+                    throwable
+                )
+            }
             response.close()
             currentUrl = nextUrl
         }
@@ -238,6 +347,7 @@ class WebAccessService @Inject constructor(
         const val MAX_SNIPPET_CHARS = 220
         const val DEFAULT_PROXY_PORT = 8080
         const val MAX_REDIRECTS = 5
+        val SHORTHAND_PROXY_REGEX = Regex("^([^:/\\s]+):(\\d+)$")
 
         val SCRIPT_REGEX = Regex("<script\\b[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
         val STYLE_REGEX = Regex("<style\\b[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))

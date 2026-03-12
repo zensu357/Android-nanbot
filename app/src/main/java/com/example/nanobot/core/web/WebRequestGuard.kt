@@ -12,7 +12,11 @@ class WebRequestGuard(
     private val hostOverrides: Map<String, List<InetAddress>> = emptyMap(),
     private val allowPrivateHostsForTesting: Set<String> = emptySet()
 ) {
-    fun validateUrl(rawUrl: String): HttpUrl {
+    fun validateUrl(
+        rawUrl: String,
+        allowResolvedPrivateHosts: Set<String> = emptySet(),
+        resolveDns: Boolean = true
+    ): HttpUrl {
         val normalized = rawUrl.trim()
         val httpUrl = normalized.toHttpUrlOrNull()
             ?: throw IllegalArgumentException("Only http:// and https:// URLs are allowed.")
@@ -21,36 +25,55 @@ class WebRequestGuard(
             throw IllegalArgumentException("Only http:// and https:// URLs are allowed.")
         }
 
-        validateHost(httpUrl.host)
-        validateResolvedAddresses(httpUrl.host, resolveAddresses(httpUrl.host))
+        validateHost(httpUrl.host, allowResolvedPrivateHosts)
+        validateLiteralHostAddress(httpUrl.host)
+        if (resolveDns) {
+            validateResolvedAddresses(httpUrl.host, resolveAddresses(httpUrl.host), allowResolvedPrivateHosts)
+        }
         return httpUrl
     }
 
-    fun validateRedirectTarget(currentUrl: HttpUrl, locationHeader: String): HttpUrl {
+    fun validateRedirectTarget(
+        currentUrl: HttpUrl,
+        locationHeader: String,
+        allowResolvedPrivateHosts: Set<String> = emptySet(),
+        resolveDns: Boolean = true
+    ): HttpUrl {
         val redirectUrl = currentUrl.resolve(locationHeader)
             ?: throw IllegalArgumentException("Invalid redirect target.")
 
-        validateHost(redirectUrl.host)
-        validateResolvedAddresses(redirectUrl.host, resolveAddresses(redirectUrl.host))
+        validateHost(redirectUrl.host, allowResolvedPrivateHosts)
+        validateLiteralHostAddress(redirectUrl.host)
+        if (resolveDns) {
+            validateResolvedAddresses(redirectUrl.host, resolveAddresses(redirectUrl.host), allowResolvedPrivateHosts)
+        }
         return redirectUrl
     }
 
-    fun validateResolvedAddresses(host: String, addresses: List<InetAddress>) {
-        if (host.lowercase() in allowPrivateHostsForTesting) {
-            return
-        }
-        if (addresses.isEmpty()) {
-            throw IllegalArgumentException("Unable to resolve host for web request.")
-        }
-        if (addresses.any { isBlockedAddress(it) }) {
+    fun validateResolvedAddresses(host: String, addresses: List<InetAddress>, allowResolvedPrivateHosts: Set<String> = emptySet()) {
+        if (allowedAddresses(host, addresses, allowResolvedPrivateHosts).isEmpty()) {
+            if (addresses.isEmpty()) {
+                throw IllegalArgumentException("Unable to resolve host for web request.")
+            }
             throw IllegalArgumentException("Private, loopback, link-local, and reserved network targets are not allowed.")
         }
     }
 
-    fun lookupAndValidate(hostname: String): List<InetAddress> {
+    fun lookupAndValidate(hostname: String, allowResolvedPrivateHosts: Set<String> = emptySet()): List<InetAddress> {
         val addresses = resolveAddresses(hostname)
-        validateResolvedAddresses(hostname, addresses)
-        return addresses
+        val allowed = allowedAddresses(hostname, addresses, allowResolvedPrivateHosts)
+        validateResolvedAddresses(hostname, addresses, allowResolvedPrivateHosts)
+        return allowed
+    }
+
+    private fun allowedAddresses(host: String, addresses: List<InetAddress>, allowResolvedPrivateHosts: Set<String>): List<InetAddress> {
+        if (host.lowercase() in normalizedAllowedPrivateHosts(allowResolvedPrivateHosts)) {
+            return addresses
+        }
+        if (addresses.isEmpty()) {
+            return emptyList()
+        }
+        return addresses.filterNot { isBlockedAddress(it) }
     }
 
     private fun resolveAddresses(hostname: String): List<InetAddress> {
@@ -58,14 +81,29 @@ class WebRequestGuard(
         return hostOverrides[key] ?: delegateDns.lookup(hostname)
     }
 
-    private fun validateHost(host: String) {
+    private fun validateHost(host: String, allowResolvedPrivateHosts: Set<String> = emptySet()) {
         val normalized = host.lowercase()
-        if (normalized in allowPrivateHostsForTesting) {
+        if (normalized in normalizedAllowedPrivateHosts(allowResolvedPrivateHosts)) {
             return
         }
         if (normalized == "localhost" || normalized.endsWith(".local")) {
             throw IllegalArgumentException("Localhost and local network hosts are not allowed.")
         }
+    }
+
+    private fun validateLiteralHostAddress(host: String) {
+        val candidate = host.removePrefix("[").removeSuffix("]")
+        if (!candidate.all { it.isDigit() || it == '.' || it == ':' || it in 'a'..'f' || it in 'A'..'F' }) {
+            return
+        }
+        val literalAddress = runCatching { InetAddress.getByName(candidate) }.getOrNull() ?: return
+        if (isBlockedAddress(literalAddress)) {
+            throw IllegalArgumentException("Private, loopback, link-local, and reserved network targets are not allowed.")
+        }
+    }
+
+    private fun normalizedAllowedPrivateHosts(extraHosts: Set<String>): Set<String> {
+        return allowPrivateHostsForTesting + extraHosts.map { it.lowercase() }
     }
 
     private fun isBlockedAddress(address: InetAddress): Boolean {

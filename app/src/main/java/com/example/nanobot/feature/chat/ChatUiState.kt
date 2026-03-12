@@ -8,6 +8,7 @@ data class ChatUiState(
     val sessionTitle: String = "New Chat",
     val input: String = "",
     val pendingAttachments: List<Attachment> = emptyList(),
+    val expandedToolMessageIds: Set<String> = emptySet(),
     val isSending: Boolean = false,
     val isRunning: Boolean = false,
     val isCancelling: Boolean = false,
@@ -15,3 +16,11 @@ data class ChatUiState(
     val activeToolName: String? = null,
     val errorMessage: String? = null
 )
+
+internal fun ChatUiState.toggleToolMessageExpansion(messageId: String): ChatUiState {
+    val updated = expandedToolMessageIds.toMutableSet()
+    if (!updated.add(messageId)) {
+        updated.remove(messageId)
+    }
+    return copy(expandedToolMessageIds = updated)
+}

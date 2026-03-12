@@ -34,6 +34,7 @@ class ChatViewModel @Inject constructor(
     private val uiStateInternal = MutableStateFlow(ChatUiState())
     private var currentConfig: AgentConfig = AgentConfig()
     private var runningJob: Job? = null
+    private var lastSessionId: String? = null
 
     private val currentSession = sessionRepository.observeCurrentSession()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -69,7 +70,10 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             currentSession.collect { session ->
-                updateState { copy(sessionTitle = session?.title ?: "New Chat") }
+                val sessionId = session?.id
+                val sessionChanged = lastSessionId != null && sessionId != lastSessionId
+                lastSessionId = sessionId
+                updateState { applySessionSelection(session?.title ?: "New Chat", sessionChanged) }
             }
         }
         viewModelScope.launch {
@@ -215,7 +219,22 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun toggleToolMessage(messageId: String) {
+        updateState {
+            toggleToolMessageExpansion(messageId)
+        }
+    }
+
     private fun updateState(transform: ChatUiState.() -> ChatUiState) {
         uiStateInternal.value = uiStateInternal.value.transform()
     }
+}
+
+internal fun ChatUiState.applySessionSelection(sessionTitle: String, sessionChanged: Boolean): ChatUiState {
+    return copy(
+        sessionTitle = sessionTitle,
+        pendingAttachments = if (sessionChanged) emptyList() else pendingAttachments,
+        expandedToolMessageIds = if (sessionChanged) emptySet() else expandedToolMessageIds,
+        errorMessage = if (sessionChanged) null else errorMessage
+    )
 }
