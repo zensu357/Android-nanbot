@@ -18,6 +18,7 @@ data class ChatMessage(
     val toolCallId: String? = null,
     val toolName: String? = null,
     val toolCallsJson: String? = null,
+    val protectedContext: Boolean = false,
     val finishReason: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )

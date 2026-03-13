@@ -26,6 +26,7 @@ data class MessageEntity(
     val toolCallId: String?,
     val toolName: String?,
     val toolCallsJson: String?,
+    val protectedContext: Boolean,
     val finishReason: String?,
     val createdAt: Long
 )

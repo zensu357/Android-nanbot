@@ -39,7 +39,10 @@ class SettingsViewModel @Inject constructor(
             combine(
                 settingsDataStore.configFlow,
                 settingsDataStore.skillsDirectoryUriFlow,
+                settingsDataStore.skillRootsFlow,
+                settingsDataStore.trustProjectSkillsFlow,
                 skillRepository.observeSkills(),
+                skillRepository.observeDiscoveryIssues(),
                 mcpRegistry.observeServers(),
                 mcpRegistry.observeCachedTools(),
                 heartbeatRepository.observeHeartbeatEnabled(),
@@ -47,17 +50,23 @@ class SettingsViewModel @Inject constructor(
             ) { values ->
                 val config = values[0] as com.example.nanobot.core.model.AgentConfig
                 val skillsDirectoryUri = values[1] as String?
-                val skills = values[2] as List<com.example.nanobot.core.skills.SkillDefinition>
-                val mcpServers = values[3] as List<com.example.nanobot.core.mcp.McpServerDefinition>
-                val mcpTools = values[4] as List<com.example.nanobot.core.mcp.McpToolDescriptor>
-                val heartbeatEnabled = values[5] as Boolean
-                val heartbeatInstructions = values[6] as String
+                val skillRoots = values[2] as List<String>
+                val trustProjectSkills = values[3] as Boolean
+                val skills = values[4] as List<com.example.nanobot.core.skills.SkillDefinition>
+                val skillDiscoveryIssues = values[5] as List<com.example.nanobot.core.skills.SkillDiscoveryIssue>
+                val mcpServers = values[6] as List<com.example.nanobot.core.mcp.McpServerDefinition>
+                val mcpTools = values[7] as List<com.example.nanobot.core.mcp.McpToolDescriptor>
+                val heartbeatEnabled = values[8] as Boolean
+                val heartbeatInstructions = values[9] as String
                 SettingsBaselineState(
                     config = config,
                     heartbeatEnabled = heartbeatEnabled,
                     heartbeatInstructions = heartbeatInstructions,
                     skills = skills,
                     skillsDirectoryUri = skillsDirectoryUri,
+                    skillRoots = skillRoots,
+                    trustProjectSkills = trustProjectSkills,
+                    skillDiscoveryIssues = skillDiscoveryIssues,
                     mcpServers = mcpServers,
                     mcpToolCounts = mcpTools.groupingBy { it.serverId }.eachCount()
                 )
@@ -111,10 +120,37 @@ class SettingsViewModel @Inject constructor(
 
     fun onSkillDirectorySelected(uri: Uri) {
         viewModelScope.launch {
-            settingsDataStore.saveSkillsDirectoryUri(uri.toString())
+            settingsDataStore.addSkillRootUri(uri.toString())
             val result = skillRepository.importSkillsFromDirectory(uri)
             val status = buildSkillImportStatus("Import", result)
             updateUiState { current -> current.copy(draft = current.draft.copy(skillImportStatus = status)) }
+        }
+    }
+
+    fun onSkillZipSelected(uri: Uri) {
+        viewModelScope.launch {
+            val result = skillRepository.importSkillsFromZip(uri)
+            val status = buildSkillImportStatus("Zip import", result)
+            updateUiState { current -> current.copy(draft = current.draft.copy(skillImportStatus = status)) }
+        }
+    }
+
+    fun onTrustProjectSkillsChanged(value: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.setTrustProjectSkills(value)
+            updateDraft { copy(trustProjectSkills = value) }
+        }
+    }
+
+    fun onRemoveSkillRoot(uri: String) {
+        viewModelScope.launch {
+            settingsDataStore.removeSkillRootUri(uri)
+            updateUiState { current ->
+                current.copy(
+                    draft = current.draft.copy(skillImportStatus = "Removed imported root."),
+                    mcpStatus = current.mcpStatus
+                )
+            }
         }
     }
 
@@ -321,6 +357,9 @@ private fun SettingsDraftState.mergeSkillStateFrom(incoming: SettingsDraftState)
             skill.copy(checked = currentChecked[skill.id] ?: skill.checked)
         },
         skillsDirectoryUri = incoming.skillsDirectoryUri,
+        skillRoots = incoming.skillRoots,
+        trustProjectSkills = incoming.trustProjectSkills,
+        skillDiagnostics = incoming.skillDiagnostics,
         skillImportStatus = skillImportStatus
     )
 }

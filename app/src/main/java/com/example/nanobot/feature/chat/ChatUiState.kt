@@ -1,7 +1,20 @@
 package com.example.nanobot.feature.chat
 
+import com.example.nanobot.core.skills.ActivatedSkillSource
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.Attachment
+
+data class ActivatableSkillUiState(
+    val name: String,
+    val title: String,
+    val description: String
+)
+
+data class ActiveSkillUiState(
+    val name: String,
+    val title: String,
+    val source: ActivatedSkillSource
+)
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -12,6 +25,8 @@ data class ChatUiState(
     val isSending: Boolean = false,
     val isRunning: Boolean = false,
     val isCancelling: Boolean = false,
+    val availableSkills: List<ActivatableSkillUiState> = emptyList(),
+    val activeSkills: List<ActiveSkillUiState> = emptyList(),
     val statusText: String? = null,
     val activeToolName: String? = null,
     val errorMessage: String? = null

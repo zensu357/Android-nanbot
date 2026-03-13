@@ -49,6 +49,7 @@ class ChatMapperTest {
             toolCallId = null,
             toolName = null,
             toolCallsJson = null,
+            protectedContext = false,
             finishReason = null,
             createdAt = 456L
         )

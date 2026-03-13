@@ -15,6 +15,9 @@ interface CustomSkillDao {
     @Query("SELECT * FROM custom_skills ORDER BY title COLLATE NOCASE")
     suspend fun getSkills(): List<CustomSkillEntity>
 
+    @Query("SELECT * FROM custom_skills WHERE id = :skillId LIMIT 1")
+    suspend fun getSkillById(skillId: String): CustomSkillEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(skills: List<CustomSkillEntity>)
 

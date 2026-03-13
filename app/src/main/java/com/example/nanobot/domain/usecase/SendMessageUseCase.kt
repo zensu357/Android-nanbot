@@ -9,12 +9,16 @@ import com.example.nanobot.core.model.AgentRunContext
 import com.example.nanobot.core.model.Attachment
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.MessageRole
+import com.example.nanobot.core.skills.ActivatedSkillSessionStore
 import com.example.nanobot.domain.repository.SessionRepository
+import com.example.nanobot.domain.repository.SkillRepository
 import javax.inject.Inject
 
 class SendMessageUseCase @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val agentTurnRunner: AgentTurnRunner,
+    private val skillRepository: SkillRepository,
+    private val activatedSkillSessionStore: ActivatedSkillSessionStore,
     private val memoryRefreshScheduler: MemoryRefreshScheduler = NoOpMemoryRefreshScheduler
 ) {
     suspend operator fun invoke(
@@ -24,7 +28,10 @@ class SendMessageUseCase @Inject constructor(
         onProgress: suspend (AgentProgressEvent) -> Unit = {}
     ): List<ChatMessage> {
         val session = sessionRepository.getOrCreateCurrentSession()
-        val existingMessages = sessionRepository.getHistoryForModel(session.id)
+        val existingMessages = filterHistoryForActiveSkills(
+            sessionId = session.id,
+            history = sessionRepository.getHistoryForModel(session.id)
+        )
         val userMessage = ChatMessage(
             sessionId = session.id,
             role = MessageRole.USER,
@@ -40,7 +47,11 @@ class SendMessageUseCase @Inject constructor(
             userInput = input,
             attachments = attachments,
             config = config,
-            runContext = AgentRunContext.root(session.id, config.maxSubagentDepth),
+            runContext = AgentRunContext.root(
+                sessionId = session.id,
+                maxSubagentDepth = config.maxSubagentDepth,
+                allowedToolNames = resolveAllowedToolNames(session.id)
+            ),
             onProgress = onProgress
         )
 
@@ -56,6 +67,33 @@ class SendMessageUseCase @Inject constructor(
         return buildList {
             add(userMessage)
             addAll(turnResult.newMessages)
+        }
+    }
+
+    private suspend fun resolveAllowedToolNames(sessionId: String): Set<String>? {
+        val activated = activatedSkillSessionStore.listActivated(sessionId)
+        if (activated.isEmpty()) return null
+        val declaredSets = activated.mapNotNull { record ->
+            val allowed = skillRepository.getSkillByName(record.skillName)?.allowedTools.orEmpty()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .toSet()
+            allowed.takeIf { it.isNotEmpty() }
+        }
+        if (declaredSets.isEmpty()) return null
+        return declaredSets.reduce { acc, next -> acc intersect next }
+    }
+
+    private fun filterHistoryForActiveSkills(sessionId: String, history: List<ChatMessage>): List<ChatMessage> {
+        val activeSkillNames = activatedSkillSessionStore.listActivated(sessionId)
+            .map { it.skillName.lowercase() }
+            .toSet()
+        return history.filterNot { message ->
+            if (!message.protectedContext) return@filterNot false
+            val toolName = message.toolName.orEmpty()
+            if (!toolName.startsWith("activate_skill:")) return@filterNot false
+            val skillName = toolName.substringAfter(':', missingDelimiterValue = "").lowercase()
+            skillName.isNotBlank() && skillName !in activeSkillNames
         }
     }
 }

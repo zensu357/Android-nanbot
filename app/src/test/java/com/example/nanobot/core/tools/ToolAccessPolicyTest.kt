@@ -85,6 +85,22 @@ class ToolAccessPolicyTest {
         assertTrue("web_search" in visibleNames)
     }
 
+    @Test
+    fun activeSkillAllowedToolsFurtherRestrictVisibleAndExecutableTools() = runTest {
+        val config = AgentConfig(enableTools = true, restrictToWorkspace = false)
+        val runContext = AgentRunContext.root("session-1").copy(
+            allowedToolNames = setOf("read_file", "list_workspace")
+        )
+
+        val visibleNames = registry.visibleTools(config, runContext).map { it.name }
+        val blockedResult = registry.execute("web_fetch", buildJsonObject { }, config, runContext)
+        val allowedResult = registry.execute("read_file", buildJsonObject { }, config, runContext)
+
+        assertEquals(listOf("list_workspace", "read_file"), visibleNames)
+        assertTrue(blockedResult.contains("currently activated skill policy"))
+        assertEquals("executed:read_file", allowedResult)
+    }
+
     private class FakeTool(
         override val name: String,
         override val accessCategory: ToolAccessCategory

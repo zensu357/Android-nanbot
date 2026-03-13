@@ -25,6 +25,10 @@ class SystemPromptBuilder @Inject constructor(
         val preset = promptPresetCatalog.getById(config.presetId)
         val enabledSkills = skillRepository.getEnabledSkills(config)
         val skillPlan = skillSelector.select(enabledSkills, latestUserInput)
+        val skillCatalogPlan = SkillExposurePlan(
+            catalogSkills = skillPlan.catalogSkills,
+            expandedSkills = emptyList()
+        )
         val sections = contextBudgetPlanner.apply(
             config = config,
             sections = listOf(
@@ -69,12 +73,12 @@ class SystemPromptBuilder @Inject constructor(
                     priority = 90
                 ),
                 PlannedPromptSection(
-                    section = skillPromptAssembler.buildCatalogSection(skillPlan),
+                    section = skillPromptAssembler.buildCatalogSection(skillCatalogPlan),
                     category = PromptSectionCategory.SKILL_CATALOG,
                     priority = 80
                 ),
                 PlannedPromptSection(
-                    section = skillPromptAssembler.buildExpandedSection(skillPlan, latestUserInput),
+                    section = skillPromptAssembler.buildExpandedSection(skillCatalogPlan, latestUserInput),
                     category = PromptSectionCategory.SKILL_EXPANDED,
                     priority = 85
                 ),
@@ -119,8 +123,8 @@ class SystemPromptBuilder @Inject constructor(
         return SystemPromptBuildResult(
             prompt = prompt,
             sectionTitles = sections.map { it.title },
-            catalogSkillIds = skillPlan.catalogSkills.map { it.id },
-            expandedSkillIds = skillPlan.expandedSkills.map { it.id }
+            catalogSkillIds = skillCatalogPlan.catalogSkills.map { it.id },
+            expandedSkillIds = emptyList()
         )
     }
 }

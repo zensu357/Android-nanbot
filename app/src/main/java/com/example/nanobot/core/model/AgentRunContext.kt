@@ -4,7 +4,8 @@ data class AgentRunContext(
     val sessionId: String,
     val parentSessionId: String? = null,
     val subagentDepth: Int = 0,
-    val maxSubagentDepth: Int = 1
+    val maxSubagentDepth: Int = 1,
+    val allowedToolNames: Set<String>? = null
 ) {
     fun canDelegate(): Boolean = subagentDepth < maxSubagentDepth
 
@@ -12,15 +13,21 @@ data class AgentRunContext(
         sessionId = childSessionId,
         parentSessionId = sessionId,
         subagentDepth = subagentDepth + 1,
-        maxSubagentDepth = maxSubagentDepth
+        maxSubagentDepth = maxSubagentDepth,
+        allowedToolNames = allowedToolNames
     )
 
     companion object {
-        fun root(sessionId: String, maxSubagentDepth: Int = 1): AgentRunContext = AgentRunContext(
+        fun root(
+            sessionId: String,
+            maxSubagentDepth: Int = 1,
+            allowedToolNames: Set<String>? = null
+        ): AgentRunContext = AgentRunContext(
             sessionId = sessionId,
             parentSessionId = null,
             subagentDepth = 0,
-            maxSubagentDepth = maxSubagentDepth
+            maxSubagentDepth = maxSubagentDepth,
+            allowedToolNames = allowedToolNames
         )
     }
 }

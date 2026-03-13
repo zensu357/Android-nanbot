@@ -10,7 +10,16 @@ import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.ChatSession
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.core.model.AgentTurnResult
+import com.example.nanobot.core.skills.ActivatedSkillSource
+import com.example.nanobot.core.skills.ActivatedSkillSessionStore
+import com.example.nanobot.core.skills.SkillActivationPayload
+import com.example.nanobot.core.skills.SkillDefinition
+import com.example.nanobot.core.skills.SkillDiscoveryIssue
+import com.example.nanobot.core.skills.SkillImportResult
+import com.example.nanobot.core.skills.SkillResourceReadResult
+import com.example.nanobot.core.skills.SkillSource
 import com.example.nanobot.domain.repository.SessionRepository
+import com.example.nanobot.domain.repository.SkillRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -28,6 +37,8 @@ class SendMessageUseCaseTest {
         val useCase = SendMessageUseCase(
             sessionRepository = sessionRepository,
             agentTurnRunner = FakeAgentTurnRunner(),
+            skillRepository = FakeSkillRepository(),
+            activatedSkillSessionStore = ActivatedSkillSessionStore(),
             memoryRefreshScheduler = scheduler
         )
 
@@ -44,6 +55,63 @@ class SendMessageUseCaseTest {
         assertEquals(MessageRole.USER, sessionRepository.savedMessages.first().role)
         assertEquals(MessageRole.ASSISTANT, sessionRepository.savedMessages.last().role)
         assertEquals(2, messages.size)
+    }
+
+    @Test
+    fun activatedSkillAllowedToolsRestrictRunContext() = runTest {
+        val sessionRepository = FakeSessionRepository()
+        val activatedStore = ActivatedSkillSessionStore().apply {
+            markActivated("session-1", "release-notes", "hash", ActivatedSkillSource.MODEL)
+        }
+        val skillRepository = FakeSkillRepository(
+            skills = listOf(
+                SkillDefinition(
+                    id = "release-notes",
+                    name = "release-notes",
+                    title = "Release Notes",
+                    description = "Generate release notes",
+                    source = SkillSource.IMPORTED,
+                    allowedTools = listOf("read_skill_resource", "notify_user")
+                )
+            )
+        )
+        val runner = CapturingAgentTurnRunner()
+        val useCase = SendMessageUseCase(
+            sessionRepository = sessionRepository,
+            agentTurnRunner = runner,
+            skillRepository = skillRepository,
+            activatedSkillSessionStore = activatedStore,
+            memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
+        )
+
+        useCase(input = "Write release notes", config = AgentConfig())
+
+        assertEquals(setOf("read_skill_resource", "notify_user"), runner.lastRunContext?.allowedToolNames)
+    }
+
+    @Test
+    fun deactivatedSkillInstructionsAreFilteredFromReplayHistory() = runTest {
+        val sessionRepository = FakeSessionRepository().apply {
+            savedMessages += ChatMessage(
+                sessionId = "session-1",
+                role = MessageRole.TOOL,
+                content = "<skill_content name=\"release-notes\">...</skill_content>",
+                toolName = "activate_skill:release-notes",
+                protectedContext = true
+            )
+        }
+        val runner = CapturingAgentTurnRunner()
+        val useCase = SendMessageUseCase(
+            sessionRepository = sessionRepository,
+            agentTurnRunner = runner,
+            skillRepository = FakeSkillRepository(),
+            activatedSkillSessionStore = ActivatedSkillSessionStore(),
+            memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
+        )
+
+        useCase(input = "Continue", config = AgentConfig())
+
+        assertTrue(runner.lastHistory.none { it.toolName == "activate_skill:release-notes" })
     }
 
     private class FakeAgentTurnRunner : AgentTurnRunner {
@@ -66,6 +134,25 @@ class SendMessageUseCaseTest {
                 ),
                 finalResponse = null
             )
+        }
+    }
+
+    private class CapturingAgentTurnRunner : AgentTurnRunner {
+        var lastRunContext: AgentRunContext? = null
+        var lastHistory: List<ChatMessage> = emptyList()
+
+        override suspend fun runTurn(
+            sessionId: String,
+            history: List<ChatMessage>,
+            userInput: String,
+            attachments: List<Attachment>,
+            config: AgentConfig,
+            runContext: AgentRunContext,
+            onProgress: suspend (AgentProgressEvent) -> Unit
+        ): AgentTurnResult {
+            lastRunContext = runContext
+            lastHistory = history
+            return AgentTurnResult(emptyList(), null)
         }
     }
 
@@ -124,5 +211,21 @@ class SendMessageUseCaseTest {
         }
 
         override suspend fun touchSession(session: ChatSession, makeCurrent: Boolean) = Unit
+    }
+
+    private class FakeSkillRepository(
+        private val skills: List<SkillDefinition> = emptyList()
+    ) : SkillRepository {
+        override fun observeSkills(): Flow<List<SkillDefinition>> = flowOf(skills)
+        override fun observeDiscoveryIssues(): Flow<List<SkillDiscoveryIssue>> = flowOf(emptyList())
+        override suspend fun listSkills(): List<SkillDefinition> = skills
+        override suspend fun getEnabledSkills(config: AgentConfig): List<SkillDefinition> = skills
+        override suspend fun getSkillByName(name: String): SkillDefinition? = skills.firstOrNull { it.name == name || it.id == name }
+        override suspend fun activateSkill(name: String): SkillActivationPayload? = null
+        override suspend fun readSkillResource(name: String, relativePath: String, sessionId: String, maxChars: Int): SkillResourceReadResult? = null
+        override suspend fun importSkillsFromDirectory(uri: android.net.Uri): SkillImportResult = SkillImportResult(0, 0, 0, 0, emptyList())
+        override suspend fun importSkillsFromZip(uri: android.net.Uri): SkillImportResult = SkillImportResult(0, 0, 0, 0, emptyList())
+        override suspend fun removeImportedSkill(id: String) = Unit
+        override suspend fun rescanImportedSkills(): SkillImportResult? = null
     }
 }

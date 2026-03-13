@@ -50,7 +50,12 @@ fun ChatMessage.toLlmMessage(): LlmMessageDto {
         toolCalls = toolCalls,
         toolCallId = toolCallId,
         // OpenAI-style tool result messages should carry only `tool_call_id`, not a `name` field.
-        name = toolName?.takeIf { role != MessageRole.TOOL }
+        // Locally inserted protected skill activations are stored as assistant messages and should also avoid provider `name` fields.
+        name = toolName?.takeIf {
+            role != MessageRole.TOOL &&
+                !it.startsWith("activate_skill") &&
+                it != "read_skill_resource"
+        }
     )
 }
 

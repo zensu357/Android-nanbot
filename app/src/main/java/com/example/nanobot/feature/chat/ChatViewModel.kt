@@ -6,7 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.nanobot.core.attachments.AttachmentStore
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentProgressEvent
+import com.example.nanobot.core.model.MessageRole
+import com.example.nanobot.core.skills.ActivatedSkillSource
 import com.example.nanobot.core.preferences.SettingsDataStore
+import com.example.nanobot.core.skills.ActivatedSkillSessionStore
+import com.example.nanobot.core.skills.SkillActivationFormatter
+import com.example.nanobot.domain.repository.SkillRepository
 import com.example.nanobot.domain.repository.SessionRepository
 import com.example.nanobot.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,7 +32,10 @@ import kotlinx.coroutines.launch
 class ChatViewModel @Inject constructor(
     private val attachmentStore: AttachmentStore,
     private val sendMessageUseCase: SendMessageUseCase,
-    sessionRepository: SessionRepository,
+    private val sessionRepository: SessionRepository,
+    private val skillRepository: SkillRepository,
+    private val skillActivationFormatter: SkillActivationFormatter,
+    private val activatedSkillSessionStore: ActivatedSkillSessionStore,
     settingsDataStore: SettingsDataStore
 ) : ViewModel() {
     private val input = MutableStateFlow("")
@@ -57,7 +65,7 @@ class ChatViewModel @Inject constructor(
             messages.collect { messageList ->
                 updateState {
                     copy(
-                        messages = messageList,
+                        messages = messageList.filterNot { it.isHiddenSkillActivationMessage() },
                         sessionTitle = currentSession.value?.title ?: sessionTitle
                     )
                 }
@@ -77,8 +85,46 @@ class ChatViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            currentSession.flatMapLatest { session ->
+                if (session == null) {
+                    flowOf(emptyList())
+                } else {
+                    activatedSkillSessionStore.observeActivated(session.id)
+                }
+            }.collect { activated ->
+                val titlesByName = uiStateInternal.value.availableSkills.associateBy { it.name }
+                updateState {
+                    copy(
+                        activeSkills = activated.map { record ->
+                            ActiveSkillUiState(
+                                name = record.skillName,
+                                title = titlesByName[record.skillName]?.title ?: record.skillName,
+                                source = record.source
+                            )
+                        }
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.configFlow.collect { config ->
                 currentConfig = config
+                val enabled = skillRepository.getEnabledSkills(config).map { skill ->
+                    ActivatableSkillUiState(
+                        name = skill.primaryActivationName(),
+                        title = skill.title,
+                        description = skill.description
+                    )
+                }
+                val activeNames = uiStateInternal.value.activeSkills.map { it.name }.toSet()
+                updateState {
+                    copy(
+                        availableSkills = enabled,
+                        activeSkills = activeSkills.map { active ->
+                            active.copy(title = enabled.firstOrNull { it.name == active.name }?.title ?: active.title)
+                        }.filter { it.name in activeNames }
+                    )
+                }
             }
         }
     }
@@ -225,9 +271,61 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun activateSkill(skillName: String) {
+        viewModelScope.launch {
+            runCatching {
+                val session = sessionRepository.getOrCreateCurrentSession()
+                val payload = skillRepository.activateSkill(skillName)
+                    ?: throw IllegalArgumentException("Skill '$skillName' is unavailable.")
+                val alreadyActivated = activatedSkillSessionStore.isActivated(
+                    sessionId = session.id,
+                    skillName = payload.skill.primaryActivationName(),
+                    contentHash = payload.skill.contentHash
+                )
+                val content = skillActivationFormatter.format(payload, alreadyActivated)
+                activatedSkillSessionStore.markActivated(
+                    session.id,
+                    payload.skill.primaryActivationName(),
+                    payload.skill.contentHash,
+                    ActivatedSkillSource.USER
+                )
+                sessionRepository.saveMessage(
+                    com.example.nanobot.core.model.ChatMessage(
+                        sessionId = session.id,
+                        role = MessageRole.ASSISTANT,
+                        content = content,
+                        toolName = "activate_skill:${payload.skill.primaryActivationName()}",
+                        protectedContext = true
+                    )
+                )
+                sessionRepository.touchSession(session, makeCurrent = true)
+            }.onFailure { throwable ->
+                updateState {
+                    copy(errorMessage = throwable.message ?: "Failed to activate skill.")
+                }
+            }
+        }
+    }
+
+    fun deactivateSkill(skillName: String) {
+        viewModelScope.launch {
+            val session = currentSession.value ?: return@launch
+            activatedSkillSessionStore.deactivate(session.id, skillName)
+            updateState {
+                copy(activeSkills = activeSkills.filterNot { it.name == skillName })
+            }
+        }
+    }
+
     private fun updateState(transform: ChatUiState.() -> ChatUiState) {
         uiStateInternal.value = uiStateInternal.value.transform()
     }
+}
+
+internal fun com.example.nanobot.core.model.ChatMessage.isHiddenSkillActivationMessage(): Boolean {
+    if (!protectedContext) return false
+    val name = toolName.orEmpty()
+    return name.startsWith("activate_skill:")
 }
 
 internal fun ChatUiState.applySessionSelection(sessionTitle: String, sessionChanged: Boolean): ChatUiState {

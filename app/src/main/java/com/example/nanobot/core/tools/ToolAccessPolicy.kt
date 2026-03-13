@@ -1,6 +1,7 @@
 package com.example.nanobot.core.tools
 
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.AgentRunContext
 import javax.inject.Inject
 
 enum class ToolAccessCategory {
@@ -19,18 +20,26 @@ data class ToolAccessDecision(
 )
 
 class ToolAccessPolicy @Inject constructor() {
-    fun filterVisibleTools(tools: Collection<AgentTool>, config: AgentConfig): List<AgentTool> {
+    fun filterVisibleTools(tools: Collection<AgentTool>, config: AgentConfig, runContext: AgentRunContext): List<AgentTool> {
         if (!config.enableTools) return emptyList()
         return tools
             .filter { isAllowedCategory(it.accessCategory, config) }
+            .filter { isAllowedBySkill(it.name, runContext) }
             .sortedBy { it.name }
     }
 
-    fun assertExecutable(tool: AgentTool, config: AgentConfig): ToolAccessDecision {
+    fun assertExecutable(tool: AgentTool, config: AgentConfig, runContext: AgentRunContext): ToolAccessDecision {
         if (!config.enableTools) {
             return ToolAccessDecision(
                 allowed = false,
                 denialMessage = "Tool execution is disabled in the current configuration."
+            )
+        }
+
+        if (!isAllowedBySkill(tool.name, runContext)) {
+            return ToolAccessDecision(
+                allowed = false,
+                denialMessage = "Tool '${tool.name}' is not allowed by the currently activated skill policy."
             )
         }
 
@@ -60,5 +69,11 @@ class ToolAccessPolicy @Inject constructor() {
             category == ToolAccessCategory.LOCAL_ORCHESTRATION ||
             category == ToolAccessCategory.WORKSPACE_READ_ONLY ||
             category == ToolAccessCategory.WORKSPACE_SIDE_EFFECT
+    }
+
+    private fun isAllowedBySkill(toolName: String, runContext: AgentRunContext): Boolean {
+        val allowed = runContext.allowedToolNames ?: return true
+        if (allowed.isEmpty()) return true
+        return toolName in allowed || toolName == "activate_skill" || toolName == "read_skill_resource"
     }
 }

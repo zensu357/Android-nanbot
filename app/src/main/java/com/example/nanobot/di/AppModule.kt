@@ -48,10 +48,12 @@ import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.core.tools.ToolValidator
 import com.example.nanobot.core.tools.impl.DeviceTimeTool
 import com.example.nanobot.core.tools.impl.DelegateTaskTool
+import com.example.nanobot.core.tools.impl.ActivateSkillTool
 import com.example.nanobot.core.tools.impl.ListWorkspaceTool
 import com.example.nanobot.core.tools.impl.MemoryLookupTool
 import com.example.nanobot.core.tools.impl.NotifyUserTool
 import com.example.nanobot.core.tools.impl.ReadFileTool
+import com.example.nanobot.core.tools.impl.ReadSkillResourceTool
 import com.example.nanobot.core.tools.impl.ReplaceInFileTool
 import com.example.nanobot.core.tools.impl.ScheduleReminderTool
 import com.example.nanobot.core.tools.impl.SearchWorkspaceTool
@@ -208,9 +210,11 @@ object AppModule {
         mcpRegistry: McpRegistry,
         notifyUserTool: NotifyUserTool,
         delegateTaskTool: DelegateTaskTool,
+        activateSkillTool: ActivateSkillTool,
         deviceTimeTool: DeviceTimeTool,
         listWorkspaceTool: ListWorkspaceTool,
         readFileTool: ReadFileTool,
+        readSkillResourceTool: ReadSkillResourceTool,
         writeFileTool: WriteFileTool,
         replaceInFileTool: ReplaceInFileTool,
         searchWorkspaceTool: SearchWorkspaceTool,
@@ -223,9 +227,11 @@ object AppModule {
         return ToolRegistry(validator, accessPolicy, mcpRegistry).apply {
             register(notifyUserTool)
             register(delegateTaskTool)
+            register(activateSkillTool)
             register(deviceTimeTool)
             register(listWorkspaceTool)
             register(readFileTool)
+            register(readSkillResourceTool)
             register(writeFileTool)
             register(replaceInFileTool)
             register(searchWorkspaceTool)

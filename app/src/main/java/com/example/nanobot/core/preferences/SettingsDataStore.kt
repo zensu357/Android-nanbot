@@ -24,8 +24,13 @@ import kotlinx.coroutines.flow.map
 interface SettingsConfigStore {
     val configFlow: Flow<AgentConfig>
     val skillsDirectoryUriFlow: Flow<String?>
+    val skillRootsFlow: Flow<List<String>>
+    val trustProjectSkillsFlow: Flow<Boolean>
     suspend fun save(config: AgentConfig)
     suspend fun saveSkillsDirectoryUri(uri: String?)
+    suspend fun addSkillRootUri(uri: String)
+    suspend fun removeSkillRootUri(uri: String)
+    suspend fun setTrustProjectSkills(trusted: Boolean)
 }
 
 @Singleton
@@ -80,6 +85,28 @@ class SettingsDataStore @Inject constructor(
         }
         .map { preferences -> preferences[SKILLS_DIRECTORY_URI] }
 
+    override val skillRootsFlow: Flow<List<String>> = dataStore.data
+        .catch {
+            if (it is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw it
+            }
+        }
+        .map { preferences ->
+            preferences[SKILL_ROOT_URIS]
+                ?.split(SKILL_ID_SEPARATOR)
+                ?.map { entry -> entry.trim() }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
+        }
+
+    override val trustProjectSkillsFlow: Flow<Boolean> = dataStore.data
+        .catch {
+            if (it is IOException) emit(emptyPreferences()) else throw it
+        }
+        .map { preferences -> preferences[TRUST_PROJECT_SKILLS] ?: false }
+
     override suspend fun save(config: AgentConfig) {
         dataStore.edit { preferences ->
             preferences[PROVIDER_TYPE] = config.providerType.wireValue
@@ -110,6 +137,47 @@ class SettingsDataStore @Inject constructor(
             } else {
                 preferences[SKILLS_DIRECTORY_URI] = uri
             }
+        }
+    }
+
+    override suspend fun addSkillRootUri(uri: String) {
+        val normalized = uri.trim()
+        if (normalized.isBlank()) return
+        dataStore.edit { preferences ->
+            val current = preferences[SKILL_ROOT_URIS]
+                ?.split(SKILL_ID_SEPARATOR)
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
+            val updated = (current + normalized).distinct()
+            preferences[SKILL_ROOT_URIS] = updated.joinToString(SKILL_ID_SEPARATOR)
+            preferences[SKILLS_DIRECTORY_URI] = normalized
+        }
+    }
+
+    override suspend fun removeSkillRootUri(uri: String) {
+        val normalized = uri.trim()
+        dataStore.edit { preferences ->
+            val current = preferences[SKILL_ROOT_URIS]
+                ?.split(SKILL_ID_SEPARATOR)
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
+            val updated = current.filterNot { it == normalized }
+            if (updated.isEmpty()) {
+                preferences.remove(SKILL_ROOT_URIS)
+            } else {
+                preferences[SKILL_ROOT_URIS] = updated.joinToString(SKILL_ID_SEPARATOR)
+            }
+            if (preferences[SKILLS_DIRECTORY_URI] == normalized) {
+                updated.lastOrNull()?.let { preferences[SKILLS_DIRECTORY_URI] = it } ?: preferences.remove(SKILLS_DIRECTORY_URI)
+            }
+        }
+    }
+
+    override suspend fun setTrustProjectSkills(trusted: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[TRUST_PROJECT_SKILLS] = trusted
         }
     }
 
@@ -144,6 +212,8 @@ class SettingsDataStore @Inject constructor(
         val PRESET_ID = stringPreferencesKey("preset_id")
         val ENABLED_SKILL_IDS = stringPreferencesKey("enabled_skill_ids")
         val SKILLS_DIRECTORY_URI = stringPreferencesKey("skills_directory_uri")
+        val SKILL_ROOT_URIS = stringPreferencesKey("skill_root_uris")
+        val TRUST_PROJECT_SKILLS = booleanPreferencesKey("trust_project_skills")
         val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
         val TEMPERATURE = doublePreferencesKey("temperature")
     }

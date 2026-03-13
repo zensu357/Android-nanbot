@@ -5,8 +5,10 @@ import com.example.nanobot.core.mcp.McpAuthType
 import com.example.nanobot.core.mcp.McpHealthStatus
 import com.example.nanobot.core.mcp.McpServerDefinition
 import com.example.nanobot.core.mcp.McpServerHealth
+import com.example.nanobot.core.skills.SkillDiagnosticKind
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.ProviderType
+import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDefinition
 
 data class SkillOptionUiState(
@@ -16,7 +18,27 @@ data class SkillOptionUiState(
     val checked: Boolean,
     val tags: List<String> = emptyList(),
     val isImported: Boolean = false,
-    val originLabel: String? = null
+    val originLabel: String? = null,
+    val scopeLabel: String? = null,
+    val trusted: Boolean = true
+)
+
+data class SkillRootUiState(
+    val uri: String,
+    val label: String,
+    val trusted: Boolean = true
+)
+
+data class SkillDiagnosticItemUiState(
+    val kind: SkillDiagnosticKind,
+    val scopeLabel: String,
+    val message: String,
+    val levelLabel: String
+)
+
+data class SkillDiagnosticSectionUiState(
+    val title: String,
+    val items: List<SkillDiagnosticItemUiState>
 )
 
 data class McpServerUiState(
@@ -60,7 +82,10 @@ data class SettingsDraftState(
     val presetId: String = "assistant_default",
     val skillOptions: List<SkillOptionUiState> = emptyList(),
     val skillsDirectoryUri: String? = null,
+    val skillRoots: List<SkillRootUiState> = emptyList(),
+    val trustProjectSkills: Boolean = false,
     val skillImportStatus: String? = null,
+    val skillDiagnostics: List<SkillDiagnosticSectionUiState> = emptyList(),
     val mcpServers: List<McpServerUiState> = emptyList(),
     val draftMcpLabel: String = "",
     val draftMcpEndpoint: String = "",
@@ -83,6 +108,9 @@ data class SettingsBaselineState(
     val heartbeatInstructions: String,
     val skills: List<SkillDefinition>,
     val skillsDirectoryUri: String?,
+    val skillRoots: List<String>,
+    val trustProjectSkills: Boolean,
+    val skillDiscoveryIssues: List<SkillDiscoveryIssue>,
     val mcpServers: List<McpServerDefinition>,
     val mcpToolCounts: Map<String, Int>
 )
@@ -121,7 +149,10 @@ data class SettingsUiState(
     val presetId: String get() = draft.presetId
     val skillOptions: List<SkillOptionUiState> get() = draft.skillOptions
     val skillsDirectoryUri: String? get() = draft.skillsDirectoryUri
+    val skillRoots: List<SkillRootUiState> get() = draft.skillRoots
+    val trustProjectSkills: Boolean get() = draft.trustProjectSkills
     val skillImportStatus: String? get() = draft.skillImportStatus
+    val skillDiagnostics: List<SkillDiagnosticSectionUiState> get() = draft.skillDiagnostics
     val mcpServers: List<McpServerUiState> get() = draft.mcpServers
     val draftMcpLabel: String get() = draft.draftMcpLabel
     val draftMcpEndpoint: String get() = draft.draftMcpEndpoint
@@ -165,11 +196,31 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
                 checked = skill.id in config.enabledSkillIds,
                 tags = skill.tags,
                 isImported = skill.isImported,
-                originLabel = skill.originLabel
+                originLabel = skill.originLabel,
+                scopeLabel = skill.scope.name.lowercase(),
+                trusted = skill.isTrusted
             )
         },
         skillsDirectoryUri = skillsDirectoryUri,
+        skillRoots = skillRoots.map { uri -> SkillRootUiState(uri = uri, label = uri, trusted = true) },
+        trustProjectSkills = trustProjectSkills,
         skillImportStatus = null,
+        skillDiagnostics = skillDiscoveryIssues
+            .groupBy { it.kind }
+            .toSortedMap(compareBy { diagnosticKindOrder(it) })
+            .map { (kind, issues) ->
+                SkillDiagnosticSectionUiState(
+                    title = diagnosticKindTitle(kind),
+                    items = issues.map { issue ->
+                        SkillDiagnosticItemUiState(
+                            kind = issue.kind,
+                            scopeLabel = issue.scope.name.lowercase(),
+                            message = issue.message,
+                            levelLabel = issue.level.name.lowercase()
+                        )
+                    }.sortedWith(compareBy({ it.scopeLabel }, { it.message.lowercase() }))
+                )
+            },
         mcpServers = mcpServers.map { server ->
             McpServerUiState(
                 id = server.id,
@@ -206,6 +257,28 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
         draftMcpBackoffBaseMs = "500",
         systemPrompt = config.systemPrompt
     )
+}
+
+private fun diagnosticKindTitle(kind: SkillDiagnosticKind): String {
+    return when (kind) {
+        SkillDiagnosticKind.LOADED -> "Loaded"
+        SkillDiagnosticKind.OVERRIDDEN -> "Overridden"
+        SkillDiagnosticKind.SKIPPED -> "Skipped"
+        SkillDiagnosticKind.BLOCKED -> "Blocked"
+        SkillDiagnosticKind.WARNING -> "Warnings"
+        SkillDiagnosticKind.ERROR -> "Errors"
+    }
+}
+
+private fun diagnosticKindOrder(kind: SkillDiagnosticKind): Int {
+    return when (kind) {
+        SkillDiagnosticKind.ERROR -> 0
+        SkillDiagnosticKind.BLOCKED -> 1
+        SkillDiagnosticKind.WARNING -> 2
+        SkillDiagnosticKind.OVERRIDDEN -> 3
+        SkillDiagnosticKind.SKIPPED -> 4
+        SkillDiagnosticKind.LOADED -> 5
+    }
 }
 
 fun SettingsDraftState.toAgentConfig(): AgentConfig {

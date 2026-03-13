@@ -43,6 +43,7 @@ fun MessageEntity.toModel(): ChatMessage = ChatMessage(
     toolCallId = toolCallId,
     toolName = toolName,
     toolCallsJson = toolCallsJson,
+    protectedContext = protectedContext,
     finishReason = finishReason,
     createdAt = createdAt
 )
@@ -58,6 +59,7 @@ fun ChatMessage.toEntity(): MessageEntity = MessageEntity(
     toolCallId = toolCallId,
     toolName = toolName,
     toolCallsJson = toolCallsJson,
+    protectedContext = protectedContext,
     finishReason = finishReason,
     createdAt = createdAt
 )

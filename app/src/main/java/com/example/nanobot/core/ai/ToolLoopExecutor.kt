@@ -77,7 +77,15 @@ class ToolLoopExecutor @Inject constructor(
                     role = MessageRole.TOOL,
                     content = result,
                     toolCallId = toolCall.id,
-                    toolName = toolCall.name
+                    toolName = toolCall.name.let { name ->
+                        if (name == "activate_skill") {
+                            val skillName = toolCall.arguments["name"]?.toString()?.trim('"').orEmpty()
+                            if (skillName.isNotBlank()) "activate_skill:$skillName" else name
+                        } else {
+                            name
+                        }
+                    },
+                    protectedContext = toolCall.name == "activate_skill"
                 )
                 emittedMessages += toolMessage
                 messages += toolMessage.toLlmMessage()

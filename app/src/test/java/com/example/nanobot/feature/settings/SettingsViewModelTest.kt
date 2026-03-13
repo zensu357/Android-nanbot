@@ -11,6 +11,9 @@ import com.example.nanobot.core.mcp.McpToolDescriptor
 import com.example.nanobot.core.mcp.McpToolDiscoverySnapshot
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.preferences.SettingsConfigStore
+import com.example.nanobot.core.skills.SkillDiagnosticKind
+import com.example.nanobot.core.skills.SkillDiscoveryIssue
+import com.example.nanobot.core.skills.SkillScope
 import com.example.nanobot.core.worker.WorkerSchedulingController
 import com.example.nanobot.domain.repository.HeartbeatRepository
 import com.example.nanobot.testutil.FakeSkillRepository
@@ -143,6 +146,41 @@ class SettingsViewModelTest {
         assertEquals(McpAuthType.NONE, viewModel.uiState.value.draftMcpAuthType)
     }
 
+    @Test
+    fun skillDiagnosticsAreGroupedByKindForSettingsUi() = runSettingsTest {
+        val viewModel = createViewModel(
+            settingsStore = FakeSettingsConfigStore(AgentConfig()),
+            heartbeatRepository = FakeHeartbeatRepository(),
+            mcpRegistry = FakeMcpRegistry(),
+            workerScheduler = FakeWorkerScheduler(),
+            skillRepository = FakeSkillRepository(
+                discoveryIssues = listOf(
+                    SkillDiscoveryIssue(
+                        message = "Project-scoped skill discovery is disabled until the workspace is trusted.",
+                        scope = SkillScope.PROJECT,
+                        kind = SkillDiagnosticKind.BLOCKED
+                    ),
+                    SkillDiscoveryIssue(
+                        message = "Skill 'shared' from project compatibility overrides project scope.",
+                        scope = SkillScope.PROJECT,
+                        kind = SkillDiagnosticKind.OVERRIDDEN
+                    ),
+                    SkillDiscoveryIssue(
+                        message = "Loaded project skill 'local-plan' from 'skills/local-plan/SKILL.md'.",
+                        scope = SkillScope.PROJECT,
+                        kind = SkillDiagnosticKind.LOADED
+                    )
+                )
+            )
+        )
+
+        advanceUntilIdle()
+
+        val diagnostics = viewModel.uiState.value.skillDiagnostics
+        assertEquals(listOf("Blocked", "Overridden", "Loaded"), diagnostics.map { it.title })
+        assertEquals("project", diagnostics.first().items.single().scopeLabel)
+    }
+
     private fun runSettingsTest(block: suspend kotlinx.coroutines.test.TestScope.() -> Unit) {
         val dispatcher = StandardTestDispatcher()
         Dispatchers.setMain(dispatcher)
@@ -159,12 +197,13 @@ class SettingsViewModelTest {
         settingsStore: SettingsConfigStore,
         heartbeatRepository: HeartbeatRepository,
         mcpRegistry: McpRegistry,
-        workerScheduler: WorkerSchedulingController
+        workerScheduler: WorkerSchedulingController,
+        skillRepository: FakeSkillRepository = FakeSkillRepository()
     ): SettingsViewModel {
         return SettingsViewModel(
             settingsDataStore = settingsStore,
             promptPresetCatalog = PromptPresetCatalog(),
-            skillRepository = FakeSkillRepository(),
+            skillRepository = skillRepository,
             mcpRegistry = mcpRegistry,
             heartbeatRepository = heartbeatRepository,
             nanobotWorkerScheduler = workerScheduler
@@ -174,10 +213,14 @@ class SettingsViewModelTest {
     private class FakeSettingsConfigStore(initial: AgentConfig) : SettingsConfigStore {
         private val flow = MutableStateFlow(initial)
         private val skillsDirectory = MutableStateFlow<String?>(null)
+        private val skillRoots = MutableStateFlow<List<String>>(emptyList())
+        private val trustProjectSkills = MutableStateFlow(false)
         var savedConfig: AgentConfig? = null
 
         override val configFlow: Flow<AgentConfig> = flow
         override val skillsDirectoryUriFlow: Flow<String?> = skillsDirectory
+        override val skillRootsFlow: Flow<List<String>> = skillRoots
+        override val trustProjectSkillsFlow: Flow<Boolean> = trustProjectSkills
 
         override suspend fun save(config: AgentConfig) {
             savedConfig = config
@@ -186,6 +229,22 @@ class SettingsViewModelTest {
 
         override suspend fun saveSkillsDirectoryUri(uri: String?) {
             skillsDirectory.value = uri
+        }
+
+        override suspend fun addSkillRootUri(uri: String) {
+            skillRoots.value = (skillRoots.value + uri).distinct()
+            skillsDirectory.value = uri
+        }
+
+        override suspend fun removeSkillRootUri(uri: String) {
+            skillRoots.value = skillRoots.value.filterNot { it == uri }
+            if (skillsDirectory.value == uri) {
+                skillsDirectory.value = skillRoots.value.lastOrNull()
+            }
+        }
+
+        override suspend fun setTrustProjectSkills(trusted: Boolean) {
+            trustProjectSkills.value = trusted
         }
 
         fun emit(config: AgentConfig) {

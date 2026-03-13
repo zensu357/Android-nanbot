@@ -7,22 +7,20 @@ class SkillPromptAssembler @Inject constructor() {
     fun buildCatalogSection(plan: SkillExposurePlan): PromptSection {
         return PromptSection(
             title = "Available Skills",
-            body = plan.catalogSkills.map { skill ->
+            body = buildList {
+                plan.catalogSkills.forEach { skill ->
                 val sourceLabel = if (skill.isImported) "imported" else "builtin"
-                "- ${skill.title} [${skill.id}, $sourceLabel]: ${skill.catalogSummary()}"
+                    add("- ${skill.primaryActivationName()} [$sourceLabel]: ${skill.description}")
+                }
+                if (plan.catalogSkills.isNotEmpty()) {
+                    add("When a task matches a skill, call `activate_skill` with the skill name before continuing.")
+                }
             }
         )
     }
 
     fun buildExpandedSection(plan: SkillExposurePlan, latestUserInput: String): PromptSection {
-        return PromptSection(
-            title = "Activated Skill Instructions",
-            body = buildList {
-                plan.expandedSkills.forEach { skill ->
-                    addAll(renderExpandedSkill(skill, latestUserInput))
-                }
-            }
-        )
+        return PromptSection(title = "Activated Skill Instructions", body = emptyList())
     }
 
     private fun renderExpandedSkill(skill: SkillDefinition, latestUserInput: String): List<String> {

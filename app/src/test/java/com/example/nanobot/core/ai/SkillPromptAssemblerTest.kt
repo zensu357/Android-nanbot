@@ -9,9 +9,10 @@ class SkillPromptAssemblerTest {
     private val assembler = SkillPromptAssembler()
 
     @Test
-    fun assemblerBuildsCatalogAndTrimmedExpandedSections() {
+    fun assemblerBuildsCatalogDisclosureWithoutExpandedSectionContent() {
         val skill = SkillDefinition(
             id = "android_refactor",
+            name = "android_refactor",
             title = "Android Refactor",
             description = "Refactor Android code",
             source = SkillSource.IMPORTED,
@@ -29,12 +30,10 @@ class SkillPromptAssemblerTest {
         )
 
         val catalog = assembler.buildCatalogSection(plan).render()
-        val expanded = assembler.buildExpandedSection(plan, "Please refactor this screen and keep the architecture intact.").render()
+        val expanded = assembler.buildExpandedSection(plan, "Please refactor this screen and keep the architecture intact.")
 
-        assertTrue(catalog.contains("Android Refactor [android_refactor, imported]"))
-        assertTrue(expanded.contains("When to use: Use for Android refactors."))
-        assertTrue(expanded.contains("Summary: Minimal diffs."))
-        assertTrue(expanded.contains("Instructions:"))
-        assertTrue(expanded.length < skill.instructions.length + 120)
+        assertTrue(catalog.contains("android_refactor [imported]: Refactor Android code"))
+        assertTrue(catalog.contains("call `activate_skill` with the skill name"))
+        assertTrue(expanded.isEmpty())
     }
 }

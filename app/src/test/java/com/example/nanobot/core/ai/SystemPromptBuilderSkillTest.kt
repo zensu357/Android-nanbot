@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 
 class SystemPromptBuilderSkillTest {
     @Test
-    fun enabledSkillIsInjectedIntoPrompt() {
+    fun enabledSkillAppearsInCatalogPrompt() {
         val builder = SystemPromptBuilder(
             promptPresetCatalog = PromptPresetCatalog(),
             skillRepository = FakeSkillRepository(),
@@ -30,9 +30,9 @@ class SystemPromptBuilderSkillTest {
         }
 
         assertTrue(prompt.contains("## Available Skills"))
-        assertTrue(prompt.contains("## Activated Skill Instructions"))
-        assertTrue(prompt.contains("- Coding Editor [coding_editor, builtin]"))
-        assertTrue(prompt.contains("Prefer inspecting the relevant workspace files before editing."))
+        assertFalse(prompt.contains("## Activated Skill Instructions"))
+        assertTrue(prompt.contains("- coding_editor [builtin]: Biases Nanobot toward safe code editing, minimal diffs, and verification after changes."))
+        assertTrue(prompt.contains("call `activate_skill` with the skill name"))
     }
 
     @Test
@@ -57,7 +57,7 @@ class SystemPromptBuilderSkillTest {
     }
 
     @Test
-    fun onlyMatchingSkillIsExpandedWhileOthersStayInCatalog() {
+    fun enabledSkillsStayInCatalogWithoutExpandedInjection() {
         val builder = SystemPromptBuilder(
             promptPresetCatalog = PromptPresetCatalog(),
             skillRepository = FakeSkillRepository(
@@ -100,9 +100,9 @@ class SystemPromptBuilderSkillTest {
             )
         }
 
-        assertTrue(prompt.contains("Coding Editor [coding_editor, builtin]"))
-        assertTrue(prompt.contains("Research Briefing [research_briefing, builtin]"))
-        assertTrue(prompt.contains("Skill: Coding Editor"))
+        assertTrue(prompt.contains("coding_editor [builtin]: Code edits"))
+        assertTrue(prompt.contains("research_briefing [builtin]: Research work"))
+        assertFalse(prompt.contains("Skill: Coding Editor"))
         assertFalse(prompt.contains("Skill: Research Briefing"))
     }
 }

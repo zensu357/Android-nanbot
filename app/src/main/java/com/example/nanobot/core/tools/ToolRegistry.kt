@@ -39,7 +39,7 @@ class ToolRegistry(
         runContext: AgentRunContext = defaultRunContext(config)
     ): List<AgentTool> {
         return accessPolicy
-            .filterVisibleTools(all(), config)
+            .filterVisibleTools(all(), config, runContext)
             .filter { it.isAvailable(config, runContext) }
     }
 
@@ -49,7 +49,7 @@ class ToolRegistry(
     ): List<AgentTool> {
         val allTools = all()
         val visibleNames = accessPolicy
-            .filterVisibleTools(allTools, config)
+            .filterVisibleTools(allTools, config, runContext)
             .filter { it.isAvailable(config, runContext) }
             .map { it.name }
             .toSet()
@@ -81,7 +81,7 @@ class ToolRegistry(
         runContext: AgentRunContext = defaultRunContext(config)
     ): String {
         val tool = get(name) ?: return "Tool '$name' is not registered."
-        val accessDecision = accessPolicy.assertExecutable(tool, config)
+        val accessDecision = accessPolicy.assertExecutable(tool, config, runContext)
         if (!accessDecision.allowed) {
             return accessDecision.denialMessage ?: "Tool '$name' is blocked by the current tool access policy."
         }

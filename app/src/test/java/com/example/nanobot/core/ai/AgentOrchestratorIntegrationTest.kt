@@ -22,6 +22,7 @@ import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.core.tools.ToolRegistry
 import com.example.nanobot.core.tools.ToolValidator
 import com.example.nanobot.core.tools.impl.DelegateTaskTool
+import com.example.nanobot.core.skills.ActivatedSkillSessionStore
 import com.example.nanobot.domain.repository.ChatRepository
 import com.example.nanobot.domain.repository.MemoryRepository
 import com.example.nanobot.domain.repository.SessionRepository
@@ -65,7 +66,7 @@ class AgentOrchestratorIntegrationTest {
             promptDiagnosticsStore = PromptDiagnosticsStore()
         )
         orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
-        val useCase = SendMessageUseCase(sessionRepository, orchestrator)
+        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore())
 
         val messages = useCase(
             input = "Please delegate a focused report task.",
@@ -109,7 +110,7 @@ class AgentOrchestratorIntegrationTest {
             promptDiagnosticsStore = PromptDiagnosticsStore()
         )
         orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
-        val useCase = SendMessageUseCase(sessionRepository, orchestrator)
+        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore())
 
         val messages = useCase(
             input = "Please delegate a report and save it in the workspace.",

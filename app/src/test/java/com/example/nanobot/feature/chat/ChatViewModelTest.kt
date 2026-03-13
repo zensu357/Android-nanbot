@@ -2,9 +2,13 @@ package com.example.nanobot.feature.chat
 
 import com.example.nanobot.core.model.Attachment
 import com.example.nanobot.core.model.AttachmentType
+import com.example.nanobot.core.model.ChatMessage
+import com.example.nanobot.core.model.MessageRole
+import com.example.nanobot.core.skills.ActivatedSkillSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ChatViewModelTest {
@@ -76,5 +80,41 @@ class ChatViewModelTest {
 
         assertEquals(setOf("tool-1"), expanded.expandedToolMessageIds)
         assertTrue(collapsed.expandedToolMessageIds.isEmpty())
+    }
+
+    @Test
+    fun hiddenSkillActivationMessageIsFilteredFromTranscript() {
+        val hidden = ChatMessage(
+            sessionId = "session-1",
+            role = MessageRole.ASSISTANT,
+            content = "<skill_content>",
+            toolName = "activate_skill:release-notes",
+            protectedContext = true
+        )
+        val visible = ChatMessage(
+            sessionId = "session-1",
+            role = MessageRole.ASSISTANT,
+            content = "Regular reply"
+        )
+
+        assertTrue(hidden.isHiddenSkillActivationMessage())
+        assertFalse(visible.isHiddenSkillActivationMessage())
+    }
+
+    @Test
+    fun activeSkillUiStateCarriesActivationSource() {
+        val userSkill = ActiveSkillUiState(
+            name = "release-notes",
+            title = "Release Notes",
+            source = ActivatedSkillSource.USER
+        )
+        val modelSkill = ActiveSkillUiState(
+            name = "android-refactor",
+            title = "Android Refactor",
+            source = ActivatedSkillSource.MODEL
+        )
+
+        assertEquals(ActivatedSkillSource.USER, userSkill.source)
+        assertEquals(ActivatedSkillSource.MODEL, modelSkill.source)
     }
 }

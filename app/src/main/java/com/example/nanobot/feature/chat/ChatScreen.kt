@@ -6,6 +6,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -28,6 +30,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -61,6 +66,7 @@ import com.example.nanobot.core.model.Attachment
 import com.example.nanobot.core.model.AttachmentType
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.MessageRole
+import com.example.nanobot.core.skills.ActivatedSkillSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,6 +76,8 @@ fun ChatScreen(
     onAttachImage: (Uri) -> Unit,
     onAttachFile: (Uri) -> Unit,
     onRemovePendingAttachment: (String) -> Unit,
+    onActivateSkill: (String) -> Unit,
+    onDeactivateSkill: (String) -> Unit,
     onSendClick: () -> Unit,
     onCancelClick: () -> Unit,
     onToggleToolMessage: (String) -> Unit,
@@ -89,6 +97,7 @@ fun ChatScreen(
     }
 
     var showAttachMenu by remember { mutableStateOf(false) }
+    var showSkillMenu by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
 
@@ -114,6 +123,41 @@ fun ChatScreen(
                 actions = {
                     IconButton(onClick = onOpenSessions) {
                         Icon(imageVector = Icons.Default.List, contentDescription = "Sessions")
+                    }
+                    Box {
+                        IconButton(onClick = { showSkillMenu = true }) {
+                            Icon(imageVector = Icons.Default.Build, contentDescription = "Activate Skill")
+                        }
+                        DropdownMenu(
+                            expanded = showSkillMenu,
+                            onDismissRequest = { showSkillMenu = false }
+                        ) {
+                            if (state.availableSkills.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No enabled skills") },
+                                    onClick = { showSkillMenu = false }
+                                )
+                            } else {
+                                state.availableSkills.forEach { skill ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(skill.title)
+                                                Text(
+                                                    text = skill.description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            showSkillMenu = false
+                                            onActivateSkill(skill.name)
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
@@ -169,6 +213,78 @@ fun ChatScreen(
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )
+            }
+
+            if (state.activeSkills.isNotEmpty()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        state.activeSkills.forEach { skill ->
+                            val sourceColor = when (skill.source) {
+                                ActivatedSkillSource.USER -> MaterialTheme.colorScheme.tertiaryContainer
+                                ActivatedSkillSource.MODEL -> MaterialTheme.colorScheme.primaryContainer
+                            }
+                            val sourceContentColor = when (skill.source) {
+                                ActivatedSkillSource.USER -> MaterialTheme.colorScheme.onTertiaryContainer
+                                ActivatedSkillSource.MODEL -> MaterialTheme.colorScheme.onPrimaryContainer
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = skill.title,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = sourceColor
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (skill.source == ActivatedSkillSource.USER) Icons.Default.Person else Icons.Default.Build,
+                                                contentDescription = null,
+                                                tint = sourceContentColor
+                                            )
+                                            Text(
+                                                text = if (skill.source == ActivatedSkillSource.USER) "You" else "Auto",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = sourceContentColor
+                                            )
+                                        }
+                                    }
+                                    TextButton(
+                                        onClick = { onDeactivateSkill(skill.name) },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                    ) {
+                                        Text(
+                                            text = "x",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             if (state.pendingAttachments.isNotEmpty()) {
@@ -400,6 +516,7 @@ private fun ColorScheme.toolContainerColor(kind: ToolMessageKind) = when (kind) 
     ToolMessageKind.WORKSPACE_READ -> secondaryContainer.copy(alpha = 0.92f)
     ToolMessageKind.DELEGATION -> tertiaryContainer.copy(alpha = 0.85f)
     ToolMessageKind.MCP -> primaryContainer.copy(alpha = 0.82f)
+    ToolMessageKind.SKILL -> secondaryContainer.copy(alpha = 0.82f)
     ToolMessageKind.MEMORY -> secondaryContainer.copy(alpha = 0.88f)
     ToolMessageKind.NOTIFY -> tertiaryContainer.copy(alpha = 0.8f)
     ToolMessageKind.OTHER -> tertiaryContainer
@@ -412,6 +529,7 @@ private fun ColorScheme.toolBadgeColor(kind: ToolMessageKind) = when (kind) {
     ToolMessageKind.WORKSPACE_READ -> secondary
     ToolMessageKind.DELEGATION -> tertiary
     ToolMessageKind.MCP -> primary
+    ToolMessageKind.SKILL -> secondary
     ToolMessageKind.MEMORY -> secondary
     ToolMessageKind.NOTIFY -> tertiary
     ToolMessageKind.OTHER -> primary

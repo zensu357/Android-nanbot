@@ -67,7 +67,10 @@ fun SettingsScreen(
     onPresetChange: (String) -> Unit,
     onSkillToggle: (String, Boolean) -> Unit,
     onSkillDirectorySelected: (android.net.Uri) -> Unit,
+    onSkillZipSelected: (android.net.Uri) -> Unit,
+    onTrustProjectSkillsChange: (Boolean) -> Unit,
     onRescanImportedSkills: () -> Unit,
+    onRemoveSkillRoot: (String) -> Unit,
     onRemoveImportedSkill: (String) -> Unit,
     onDraftMcpLabelChange: (String) -> Unit,
     onDraftMcpEndpointChange: (String) -> Unit,
@@ -105,6 +108,19 @@ fun SettingsScreen(
                 )
             }
             onSkillDirectorySelected(uri)
+        }
+    }
+    val skillsZipLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            onSkillZipSelected(uri)
         }
     }
 
@@ -229,10 +245,51 @@ fun SettingsScreen(
                         Text("Import Skills From Directory")
                     }
                     OutlinedButton(
+                        onClick = { skillsZipLauncher.launch(arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed")) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Import Skills From Zip")
+                    }
+                    SettingToggleRow(
+                        label = "Trust Project Skills",
+                        checked = state.trustProjectSkills,
+                        onCheckedChange = onTrustProjectSkillsChange,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "Project skills discovered from workspace skills/ and .agents/skills/ stay hidden until you trust this workspace.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(
                         onClick = onRescanImportedSkills,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Rescan Imported Skills")
+                    }
+                    state.skillRoots.forEach { root ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = root.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = root.uri,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                TextButton(onClick = { onRemoveSkillRoot(root.uri) }) {
+                                    Text("Remove Imported Root")
+                                }
+                            }
+                        }
                     }
                     state.skillsDirectoryUri?.takeIf { it.isNotBlank() }?.let { uri ->
                         Text(
@@ -247,6 +304,37 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    if (state.skillDiagnostics.isNotEmpty()) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Skill Diagnostics",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                state.skillDiagnostics.forEach { section ->
+                                    Text(
+                                        text = section.title,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    section.items.forEach { issue ->
+                                        Text(
+                                            text = "${issue.scopeLabel} | ${issue.levelLabel}: ${issue.message}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                     state.skillOptions.forEach { skill ->
                         Card(modifier = Modifier.fillMaxWidth()) {
@@ -272,6 +360,13 @@ fun SettingsScreen(
                                         text = "Imported Skill",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                skill.scopeLabel?.takeIf { it.isNotBlank() }?.let { scope ->
+                                    Text(
+                                        text = "Scope: $scope${if (skill.trusted) "" else " (untrusted)"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 if (skill.tags.isNotEmpty()) {

@@ -25,7 +25,12 @@ class HistoryExposurePlanner @Inject constructor() {
         var used = 0
         var truncatedCount = 0
 
+        val protectedMessages = history.filter { it.protectedContext }
+        protectedMessages.forEach { selected += it }
+        used += protectedMessages.sumOf { estimateCost(it) }
+
         history.asReversed().forEach { message ->
+            if (message.protectedContext) return@forEach
             val trimmed = trimMessage(message, perMessageBudget)
             if (trimmed.content != message.content) truncatedCount += 1
             val cost = estimateCost(trimmed)
