@@ -50,7 +50,8 @@ class SendMessageUseCase @Inject constructor(
             runContext = AgentRunContext.root(
                 sessionId = session.id,
                 maxSubagentDepth = config.maxSubagentDepth,
-                allowedToolNames = resolveAllowedToolNames(session.id)
+                allowedToolNames = resolveAllowedToolNames(session.id),
+                unlockedToolNames = resolveUnlockedToolNames(session.id)
             ),
             onProgress = onProgress
         )
@@ -82,6 +83,15 @@ class SendMessageUseCase @Inject constructor(
         }
         if (declaredSets.isEmpty()) return null
         return declaredSets.reduce { acc, next -> acc intersect next }
+    }
+
+    private suspend fun resolveUnlockedToolNames(sessionId: String): Set<String> {
+        val activated = activatedSkillSessionStore.listActivated(sessionId)
+        if (activated.isEmpty()) return emptySet()
+        return activated
+            .mapNotNull { record -> skillRepository.getSkillByName(record.skillName) }
+            .flatMap { skill -> skillRepository.getHiddenToolEntitlements(skill) }
+            .toSet()
     }
 
     private fun filterHistoryForActiveSkills(sessionId: String, history: List<ChatMessage>): List<ChatMessage> {

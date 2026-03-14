@@ -7,6 +7,7 @@ import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillImportResult
 import com.example.nanobot.core.skills.SkillResourceReadResult
+import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
 import kotlinx.coroutines.flow.Flow
 
 interface SkillRepository {
@@ -21,4 +22,6 @@ interface SkillRepository {
     suspend fun importSkillsFromZip(uri: Uri): SkillImportResult
     suspend fun removeImportedSkill(id: String)
     suspend fun rescanImportedSkills(): SkillImportResult?
+    suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt?
+    suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String>
 }

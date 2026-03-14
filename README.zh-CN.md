@@ -119,12 +119,12 @@ git clone https://github.com/zensu357/Android-nanobot.git
 - 通过 `delegate_task` 实现的本地编排能力
 - 带缓存发现与局部刷新保留能力的动态 MCP 工具
 - Heartbeat 与 reminder 后台自动化
-- 存储于应用私有目录、并能走 OpenAI-compatible 多模态路径的图片附件
+- 存储于应用私有目录的图片与文件附件：图片会在兼容的多模态 provider 路径上发送，文件内容会在需要时以内联文本形式提供给模型
 
 ## 当前边界
 
-- 多模态目前只支持图片
-- Provider 侧附件投递目前只接通了 OpenAI-compatible 路径
+- 图片附件能力取决于当前选择的 provider 路径，部分识别到的 provider 规格仍未开启图片支持
+- 非图片文件附件当前会展开为文本内容，而不是走 provider 原生文件上传接口
 - MCP 目前只支持远程 HTTP 形态，不支持本地 stdio server 或 marketplace 流程
 - Channels / bridge / CLI 生态层尚未在这个 Android 项目中实现
 

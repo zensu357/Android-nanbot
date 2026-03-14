@@ -143,6 +143,31 @@ class ToolDebugViewModel @Inject constructor(
                 put("delayMinutes", 15)
                 put("title", "Nanobot Reminder")
             }
+            "read_current_ui" -> buildJsonObject {
+                put("includeNonInteractive", false)
+                put("maxNodes", 40)
+            }
+            "tap_ui_node" -> buildJsonObject {
+                put("nodeId", "node-1")
+            }
+            "input_text" -> buildJsonObject {
+                put("nodeId", "input-1")
+                put("text", "Hello from hidden tool debug")
+            }
+            "scroll_ui" -> buildJsonObject {
+                put("nodeId", "list-1")
+                put("direction", "forward")
+            }
+            "press_global_action" -> buildJsonObject {
+                put("action", "back")
+            }
+            "launch_app" -> buildJsonObject {
+                put("packageName", "com.android.settings")
+            }
+            "wait_for_ui" -> buildJsonObject {
+                put("text", "Settings")
+                put("timeoutMs", 3000)
+            }
             "delegate_task" -> buildJsonObject {
                 put("task", "Inspect the workspace and return a compact summary")
                 put("title", "Debug Delegated Task")

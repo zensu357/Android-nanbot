@@ -4,10 +4,16 @@ import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
 import kotlinx.serialization.json.JsonObject
 
+enum class ToolExposure {
+    DEFAULT_VISIBLE,
+    HIDDEN_UNLOCKABLE
+}
+
 interface AgentTool {
     val name: String
     val description: String
     val accessCategory: ToolAccessCategory
+    val exposure: ToolExposure get() = ToolExposure.DEFAULT_VISIBLE
     val availabilityHint: String get() = "Always available"
     val parametersSchema: JsonObject
     fun isAvailable(config: AgentConfig, runContext: AgentRunContext): Boolean = true

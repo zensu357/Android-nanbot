@@ -12,9 +12,17 @@ import com.example.nanobot.core.skills.SkillContentStore
 import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.skills.SkillDiscoveryService
 import com.example.nanobot.core.skills.SkillDefinition
+import com.example.nanobot.core.skills.SkillDirectoryScanner
 import com.example.nanobot.core.skills.SkillImportResult
 import com.example.nanobot.core.skills.SkillImportScanner
 import com.example.nanobot.core.skills.SkillMarkdownParser
+import com.example.nanobot.core.skills.PhoneControlUnlockConsent
+import com.example.nanobot.core.skills.PhoneControlUnlockManifest
+import com.example.nanobot.core.skills.PhoneControlUnlockProcessor
+import com.example.nanobot.core.skills.PhoneControlUnlockProfileRegistry
+import com.example.nanobot.core.skills.PhoneControlUnlockSigning
+import com.example.nanobot.core.skills.PhoneControlUnlockStore
+import com.example.nanobot.core.skills.PhoneControlUnlockVerifier
 import com.example.nanobot.core.skills.SkillResourceEntry
 import com.example.nanobot.core.skills.SkillResourceIndexer
 import com.example.nanobot.core.skills.SkillResourceType
@@ -25,12 +33,20 @@ import com.example.nanobot.core.workspace.WorkspaceFileContent
 import com.example.nanobot.core.workspace.WorkspaceRoot
 import com.example.nanobot.domain.repository.WorkspaceRepository
 import com.example.nanobot.data.mapper.toEntity
+import java.io.File
+import java.security.KeyFactory
+import java.security.Signature
+import java.security.spec.PKCS8EncodedKeySpec
+import java.util.Base64
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
@@ -56,7 +72,13 @@ class SkillRepositoryImplTest {
                 )
             )
         )
-        val repository = SkillRepositoryImpl(SkillCatalog(), dao, scanner, settingsStore, FakeSkillContentStore(), discoveryService(workspaceRepository), zipImporter(), activatedSkillStore, workspaceRepository)
+        val repository = createRepository(
+            dao = dao,
+            scanner = scanner,
+            settingsStore = settingsStore,
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
+        )
 
         val importResult = repository.importSkillsFromDirectory(Uri.parse("content://skills/tree"))
         val merged = repository.listSkills()
@@ -107,7 +129,13 @@ class SkillRepositoryImplTest {
                 )
             )
         )
-        val repository = SkillRepositoryImpl(SkillCatalog(), dao, scanner, settingsStore, FakeSkillContentStore(), discoveryService(workspaceRepository), zipImporter(), activatedSkillStore, workspaceRepository)
+        val repository = createRepository(
+            dao = dao,
+            scanner = scanner,
+            settingsStore = settingsStore,
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
+        )
         settingsStore.save(AgentConfig(enabledSkillIds = listOf("release-notes", "coding_editor")))
 
         val result = repository.importSkillsFromDirectory(Uri.parse("content://skills/tree"))
@@ -138,7 +166,14 @@ class SkillRepositoryImplTest {
                 "content://skills/tree/references/guide.md" to "Guide contents"
             )
         )
-        val repository = SkillRepositoryImpl(SkillCatalog(), dao, scanner, settingsStore, contentStore, discoveryService(workspaceRepository), zipImporter(), activatedSkillStore, workspaceRepository)
+        val repository = createRepository(
+            dao = dao,
+            scanner = scanner,
+            settingsStore = settingsStore,
+            contentStore = contentStore,
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
+        )
         dao.upsertAll(
             listOf(
                 SkillDefinition(
@@ -176,16 +211,13 @@ class SkillRepositoryImplTest {
         val settingsStore = FakeSettingsStore()
         val activatedSkillStore = ActivatedSkillSessionStore()
         val workspaceRepository = FakeWorkspaceRepository()
-        val repository = SkillRepositoryImpl(
-            SkillCatalog(),
-            dao,
-            FakeSkillScanner(mutableMapOf()),
-            settingsStore,
-            FakeSkillContentStore(mapOf("content://skills/tree/references/guide.md" to "Guide contents")),
-            discoveryService(workspaceRepository),
-            zipImporter(),
-            activatedSkillStore,
-            workspaceRepository
+        val repository = createRepository(
+            dao = dao,
+            scanner = FakeSkillScanner(mutableMapOf()),
+            settingsStore = settingsStore,
+            contentStore = FakeSkillContentStore(mapOf("content://skills/tree/references/guide.md" to "Guide contents")),
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
         )
         dao.upsertAll(
             listOf(
@@ -224,16 +256,12 @@ class SkillRepositoryImplTest {
                 ".agents/skills/release-notes/SKILL.md" to "---\nname: release-notes\ndescription: Generate release notes\n---\nUse this skill."
             )
         )
-        val repository = SkillRepositoryImpl(
-            SkillCatalog(),
-            dao,
-            FakeSkillScanner(mutableMapOf()),
-            settingsStore,
-            FakeSkillContentStore(),
-            discoveryService(workspaceRepository),
-            zipImporter(),
-            activatedSkillStore,
-            workspaceRepository
+        val repository = createRepository(
+            dao = dao,
+            scanner = FakeSkillScanner(mutableMapOf()),
+            settingsStore = settingsStore,
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
         )
         dao.upsertAll(
             listOf(
@@ -264,6 +292,98 @@ class SkillRepositoryImplTest {
 
         assertEquals("Workspace guide", resource?.content)
         assertEquals(null, traversal)
+    }
+
+    @Test
+    fun importSkillsFromZipVerifiesUnlockAndStoresReceipt() = runTest {
+        val archiveUri = createZipArchive(
+            mapOf(
+                "phone-operator-basic/SKILL.md" to sampleSkillMarkdown(),
+                "phone-operator-basic/phone-control.unlock" to signedUnlockManifest(
+                    skillId = "phone-operator-basic",
+                    skillPath = "phone-operator-basic/SKILL.md",
+                    skillSha256 = unlockVerifier().sha256(sampleSkillMarkdown())
+                )
+            )
+        )
+        val dao = FakeCustomSkillDao()
+        val settingsStore = FakeSettingsStore()
+        val activatedSkillStore = ActivatedSkillSessionStore()
+        val workspaceRepository = FakeWorkspaceRepository()
+        val repository = createRepository(
+            dao = dao,
+            scanner = SkillDirectoryScanner(
+                org.robolectric.RuntimeEnvironment.getApplication(),
+                SkillMarkdownParser(),
+                SkillResourceIndexer()
+            ),
+            settingsStore = settingsStore,
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
+        )
+
+        val result = repository.importSkillsFromZip(archiveUri)
+        val imported = repository.getSkillByName("phone-operator-basic")
+        val receipt = repository.getPhoneControlUnlockReceipt("pkg.phone-operator-basic")
+
+        assertEquals(1, result.importedCount)
+        assertNotNull(imported)
+        assertTrue(result.errors.any { it.contains("unlock verified", ignoreCase = true) })
+        assertNotNull(receipt)
+        assertEquals("phone-operator-basic", receipt.skillId)
+        assertFalse(imported.resourceEntries.any { it.relativePath.endsWith("phone-control.unlock") })
+        assertEquals(
+            setOf(
+                "read_current_ui",
+                "tap_ui_node",
+                "input_text",
+                "scroll_ui",
+                "press_global_action",
+                "launch_app",
+                "wait_for_ui"
+            ),
+            repository.getHiddenToolEntitlements(imported)
+        )
+    }
+
+    @Test
+    fun importSkillsFromZipFallsBackToNormalSkillWhenUnlockVerificationFails() = runTest {
+        val archiveUri = createZipArchive(
+            mapOf(
+                "phone-operator-basic/SKILL.md" to sampleSkillMarkdown(),
+                "phone-operator-basic/phone-control.unlock" to signedUnlockManifest(
+                    skillId = "phone-operator-basic",
+                    skillPath = "phone-operator-basic/SKILL.md",
+                    skillSha256 = "deadbeef"
+                )
+            )
+        )
+        val dao = FakeCustomSkillDao()
+        val settingsStore = FakeSettingsStore()
+        val activatedSkillStore = ActivatedSkillSessionStore()
+        val workspaceRepository = FakeWorkspaceRepository()
+        val repository = createRepository(
+            dao = dao,
+            scanner = SkillDirectoryScanner(
+                org.robolectric.RuntimeEnvironment.getApplication(),
+                SkillMarkdownParser(),
+                SkillResourceIndexer()
+            ),
+            settingsStore = settingsStore,
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
+        )
+
+        val result = repository.importSkillsFromZip(archiveUri)
+        val imported = repository.getSkillByName("phone-operator-basic")
+        val receipt = repository.getPhoneControlUnlockReceipt("pkg.phone-operator-basic")
+
+        assertEquals(1, result.importedCount)
+        assertNotNull(imported)
+        assertTrue(result.errors.any { it.contains("verification failed", ignoreCase = true) })
+        assertEquals(null, receipt)
+        assertFalse(imported.resourceEntries.any { it.relativePath.endsWith("phone-control.unlock") })
+        assertEquals(emptySet(), repository.getHiddenToolEntitlements(imported))
     }
 
     private fun scannedSkill(
@@ -375,6 +495,111 @@ class SkillRepositoryImplTest {
 
     private fun zipImporter(): SkillZipImporter {
         return SkillZipImporter(org.robolectric.RuntimeEnvironment.getApplication())
+    }
+
+    private fun unlockVerifier(): PhoneControlUnlockVerifier = PhoneControlUnlockVerifier()
+
+    private fun unlockStore(): PhoneControlUnlockStore {
+        return PhoneControlUnlockStore(org.robolectric.RuntimeEnvironment.getApplication(), unlockVerifier())
+    }
+
+    private fun unlockProcessor(): PhoneControlUnlockProcessor {
+        return PhoneControlUnlockProcessor(
+            verifier = unlockVerifier(),
+            unlockStore = unlockStore(),
+            parser = SkillMarkdownParser(),
+            resourceIndexer = SkillResourceIndexer()
+        )
+    }
+
+    private fun createRepository(
+        dao: FakeCustomSkillDao,
+        scanner: SkillImportScanner,
+        settingsStore: FakeSettingsStore,
+        contentStore: SkillContentStore = FakeSkillContentStore(),
+        activatedSkillStore: ActivatedSkillSessionStore,
+        workspaceRepository: WorkspaceRepository
+    ): SkillRepositoryImpl {
+        return SkillRepositoryImpl(
+            skillCatalog = SkillCatalog(),
+            customSkillDao = dao,
+            skillDirectoryScanner = scanner,
+            settingsConfigStore = settingsStore,
+            skillContentStore = contentStore,
+            skillDiscoveryService = discoveryService(workspaceRepository),
+            skillZipImporter = zipImporter(),
+            activatedSkillSessionStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository,
+            phoneControlUnlockProcessor = unlockProcessor(),
+            phoneControlUnlockStore = unlockStore(),
+            phoneControlUnlockProfileRegistry = PhoneControlUnlockProfileRegistry()
+        )
+    }
+
+    private fun sampleSkillMarkdown(): String {
+        return """
+            ---
+            name: phone-operator-basic
+            description: Unlock basic phone control guidance
+            ---
+            ## Instructions
+            Read the UI before acting.
+        """.trimIndent()
+    }
+
+    private fun signedUnlockManifest(skillId: String, skillPath: String, skillSha256: String): String {
+        val verifier = unlockVerifier()
+        val unsigned = PhoneControlUnlockManifest(
+            version = 1,
+            packageId = "pkg.$skillId",
+            skillId = skillId,
+            skillPath = skillPath,
+            skillSha256 = skillSha256,
+            unlockProfiles = listOf("phone_control_basic_v1"),
+            consent = PhoneControlUnlockConsent(
+                title = "Phone Control Hidden Feature Agreement",
+                version = "2026-03-14",
+                text = "I agree to use this feature responsibly."
+            ),
+            signing = PhoneControlUnlockSigning(
+                keyId = "test-phone-control-key",
+                algorithm = "Ed25519",
+                signature = ""
+            )
+        )
+        val payload = verifier.canonicalPayload(unsigned)
+        val privateKey = KeyFactory.getInstance("Ed25519").generatePrivate(
+            PKCS8EncodedKeySpec(Base64.getDecoder().decode(TEST_PRIVATE_KEY_BASE64))
+        )
+        val signature = Signature.getInstance("Ed25519").apply {
+            initSign(privateKey)
+            update(payload.toByteArray())
+        }.sign()
+        return Json {
+            explicitNulls = false
+            prettyPrint = false
+        }.encodeToString(
+            unsigned.copy(
+                signing = unsigned.signing.copy(signature = Base64.getEncoder().encodeToString(signature))
+            )
+        )
+    }
+
+    private fun createZipArchive(entries: Map<String, String>): Uri {
+        val root = File(org.robolectric.RuntimeEnvironment.getApplication().cacheDir, "skill-test-zips").apply { mkdirs() }
+        val archive = File.createTempFile("skills", ".zip", root)
+        java.util.zip.ZipOutputStream(archive.outputStream().buffered()).use { zip ->
+            entries.forEach { (path, content) ->
+                zip.putNextEntry(java.util.zip.ZipEntry(path))
+                zip.write(content.toByteArray())
+                zip.closeEntry()
+            }
+        }
+        return Uri.fromFile(archive)
+    }
+
+    private companion object {
+        const val TEST_PRIVATE_KEY_BASE64 = "MC4CAQAwBQYDK2VwBCIEICSj0HVHJcSaUJR8IC9mud4Y6mozLpSvoy4/ilUttYdC"
     }
 
     private class FakeWorkspaceRepository(

@@ -52,12 +52,19 @@ import com.example.nanobot.core.tools.impl.ActivateSkillTool
 import com.example.nanobot.core.tools.impl.ListWorkspaceTool
 import com.example.nanobot.core.tools.impl.MemoryLookupTool
 import com.example.nanobot.core.tools.impl.NotifyUserTool
+import com.example.nanobot.core.tools.impl.InputTextTool
+import com.example.nanobot.core.tools.impl.LaunchAppTool
+import com.example.nanobot.core.tools.impl.PressGlobalActionTool
 import com.example.nanobot.core.tools.impl.ReadFileTool
+import com.example.nanobot.core.tools.impl.ReadCurrentUiTool
 import com.example.nanobot.core.tools.impl.ReadSkillResourceTool
 import com.example.nanobot.core.tools.impl.ReplaceInFileTool
 import com.example.nanobot.core.tools.impl.ScheduleReminderTool
+import com.example.nanobot.core.tools.impl.ScrollUiTool
 import com.example.nanobot.core.tools.impl.SearchWorkspaceTool
 import com.example.nanobot.core.tools.impl.SessionSnapshotTool
+import com.example.nanobot.core.tools.impl.TapUiNodeTool
+import com.example.nanobot.core.tools.impl.WaitForUiTool
 import com.example.nanobot.core.tools.impl.WebFetchTool
 import com.example.nanobot.core.tools.impl.WebSearchTool
 import com.example.nanobot.core.tools.impl.WriteFileTool
@@ -222,7 +229,14 @@ object AppModule {
         webSearchTool: WebSearchTool,
         sessionSnapshotTool: SessionSnapshotTool,
         memoryLookupTool: MemoryLookupTool,
-        scheduleReminderTool: ScheduleReminderTool
+        scheduleReminderTool: ScheduleReminderTool,
+        readCurrentUiTool: ReadCurrentUiTool,
+        tapUiNodeTool: TapUiNodeTool,
+        inputTextTool: InputTextTool,
+        scrollUiTool: ScrollUiTool,
+        pressGlobalActionTool: PressGlobalActionTool,
+        launchAppTool: LaunchAppTool,
+        waitForUiTool: WaitForUiTool
     ): ToolRegistry {
         return ToolRegistry(validator, accessPolicy, mcpRegistry).apply {
             register(notifyUserTool)
@@ -240,6 +254,13 @@ object AppModule {
             register(sessionSnapshotTool)
             register(memoryLookupTool)
             register(scheduleReminderTool)
+            register(readCurrentUiTool)
+            register(tapUiNodeTool)
+            register(inputTextTool)
+            register(scrollUiTool)
+            register(pressGlobalActionTool)
+            register(launchAppTool)
+            register(waitForUiTool)
         }
     }
 }

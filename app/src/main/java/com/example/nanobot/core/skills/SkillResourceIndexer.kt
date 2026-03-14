@@ -9,7 +9,13 @@ class SkillResourceIndexer @Inject constructor() {
     fun index(relativePaths: List<Pair<String, String?>>): List<SkillResourceEntry> {
         return relativePaths
             .map { (path, documentUri) -> path.trim().replace('\\', '/') to documentUri }
-            .filter { (path, _) -> path.isNotBlank() && !path.endsWith("/SKILL.md", ignoreCase = true) && !path.equals("SKILL.md", ignoreCase = true) }
+            .filter { (path, _) ->
+                path.isNotBlank() &&
+                    !path.endsWith("/SKILL.md", ignoreCase = true) &&
+                    !path.equals("SKILL.md", ignoreCase = true) &&
+                    !path.endsWith("/$PHONE_CONTROL_UNLOCK_FILE_NAME", ignoreCase = true) &&
+                    !path.equals(PHONE_CONTROL_UNLOCK_FILE_NAME, ignoreCase = true)
+            }
             .distinct()
             .sortedBy { it.first }
             .map { (path, documentUri) ->

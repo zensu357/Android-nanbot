@@ -25,6 +25,7 @@ class ToolAccessPolicyTest {
         register(FakeTool("mcp.github.issue_search", ToolAccessCategory.EXTERNAL_READ_ONLY))
         register(FakeTool("notify_user", ToolAccessCategory.LOCAL_SIDE_EFFECT))
         register(FakeTool("schedule_reminder", ToolAccessCategory.LOCAL_SIDE_EFFECT))
+        register(FakeTool("read_current_ui", ToolAccessCategory.LOCAL_READ_ONLY, ToolExposure.HIDDEN_UNLOCKABLE))
     }
 
     @Test
@@ -101,9 +102,35 @@ class ToolAccessPolicyTest {
         assertEquals("executed:read_file", allowedResult)
     }
 
+    @Test
+    fun hiddenUnlockableToolsStayInvisibleUntilUnlocked() = runTest {
+        val config = AgentConfig(enableTools = true, restrictToWorkspace = false)
+
+        val visibleNames = registry.visibleTools(config).map { it.name }
+        val blockedResult = registry.execute("read_current_ui", buildJsonObject { }, config)
+
+        assertTrue("read_current_ui" !in visibleNames)
+        assertTrue(blockedResult.contains("hidden until unlocked"))
+    }
+
+    @Test
+    fun hiddenUnlockableToolsBecomeVisibleWhenRunContextUnlocksThem() = runTest {
+        val config = AgentConfig(enableTools = true, restrictToWorkspace = false)
+        val runContext = AgentRunContext.root("session-1").copy(
+            unlockedToolNames = setOf("read_current_ui")
+        )
+
+        val visibleNames = registry.visibleTools(config, runContext).map { it.name }
+        val result = registry.execute("read_current_ui", buildJsonObject { }, config, runContext)
+
+        assertTrue("read_current_ui" in visibleNames)
+        assertEquals("executed:read_current_ui", result)
+    }
+
     private class FakeTool(
         override val name: String,
-        override val accessCategory: ToolAccessCategory
+        override val accessCategory: ToolAccessCategory,
+        override val exposure: ToolExposure = ToolExposure.DEFAULT_VISIBLE
     ) : AgentTool {
         override val description: String = name
         override val parametersSchema: JsonObject = buildJsonObject { }

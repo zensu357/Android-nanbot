@@ -24,6 +24,7 @@ class ToolAccessPolicy @Inject constructor() {
         if (!config.enableTools) return emptyList()
         return tools
             .filter { isAllowedCategory(it.accessCategory, config) }
+            .filter { isExposed(it, runContext) }
             .filter { isAllowedBySkill(it.name, runContext) }
             .sortedBy { it.name }
     }
@@ -40,6 +41,13 @@ class ToolAccessPolicy @Inject constructor() {
             return ToolAccessDecision(
                 allowed = false,
                 denialMessage = "Tool '${tool.name}' is not allowed by the currently activated skill policy."
+            )
+        }
+
+        if (!isExposed(tool, runContext)) {
+            return ToolAccessDecision(
+                allowed = false,
+                denialMessage = "Tool '${tool.name}' is hidden until unlocked by a verified hidden-feature skill."
             )
         }
 
@@ -75,5 +83,12 @@ class ToolAccessPolicy @Inject constructor() {
         val allowed = runContext.allowedToolNames ?: return true
         if (allowed.isEmpty()) return true
         return toolName in allowed || toolName == "activate_skill" || toolName == "read_skill_resource"
+    }
+
+    private fun isExposed(tool: AgentTool, runContext: AgentRunContext): Boolean {
+        return when (tool.exposure) {
+            ToolExposure.DEFAULT_VISIBLE -> true
+            ToolExposure.HIDDEN_UNLOCKABLE -> tool.name in runContext.unlockedToolNames
+        }
     }
 }

@@ -7,6 +7,7 @@ import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillImportResult
+import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
 import com.example.nanobot.core.skills.SkillResourceReadResult
 import com.example.nanobot.domain.repository.SkillRepository
 import kotlinx.coroutines.flow.Flow
@@ -53,4 +54,8 @@ class FakeSkillRepository(
     override suspend fun removeImportedSkill(id: String) = Unit
 
     override suspend fun rescanImportedSkills(): SkillImportResult? = null
+
+    override suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt? = null
+
+    override suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String> = emptySet()
 }

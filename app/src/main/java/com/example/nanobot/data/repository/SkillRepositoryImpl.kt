@@ -10,6 +10,10 @@ import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.skills.SkillContentStore
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDiscoveryService
+import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
+import com.example.nanobot.core.skills.PhoneControlUnlockProcessor
+import com.example.nanobot.core.skills.PhoneControlUnlockProfileRegistry
+import com.example.nanobot.core.skills.PhoneControlUnlockStore
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillImportScanner
 import com.example.nanobot.core.skills.SkillImportResult
@@ -37,7 +41,10 @@ class SkillRepositoryImpl @Inject constructor(
     private val skillDiscoveryService: SkillDiscoveryService,
     private val skillZipImporter: SkillZipImporter,
     private val activatedSkillSessionStore: ActivatedSkillSessionStore,
-    private val workspaceRepository: WorkspaceRepository
+    private val workspaceRepository: WorkspaceRepository,
+    private val phoneControlUnlockProcessor: PhoneControlUnlockProcessor,
+    private val phoneControlUnlockStore: PhoneControlUnlockStore,
+    private val phoneControlUnlockProfileRegistry: PhoneControlUnlockProfileRegistry
 ) : SkillRepository {
 
     override fun observeSkills(): Flow<List<SkillDefinition>> {
@@ -125,10 +132,19 @@ class SkillRepositoryImpl @Inject constructor(
     }
 
     override suspend fun importSkillsFromDirectory(uri: Uri): SkillImportResult {
-        val scanned = skillDirectoryScanner.scan(uri)
+        val processed = phoneControlUnlockProcessor.process(skillDirectoryScanner.scan(uri))
+        val scanned = processed.map { it.scannedSkill }
         if (scanned.isEmpty()) {
             settingsConfigStore.addSkillRootUri(uri.toString())
-            return SkillImportResult(importedCount = 0, updatedCount = 0, skippedCount = 0, duplicateCount = 0, errors = listOf("No SKILL.md files were found."))
+            return SkillImportResult(
+                importedCount = 0,
+                updatedCount = 0,
+                skippedCount = 0,
+                duplicateCount = 0,
+                errors = processed.flatMapTo(mutableListOf()) { it.warnings }.ifEmpty {
+                    listOf("No SKILL.md files were found.")
+                }
+            )
         }
 
         val builtinIds = skillCatalog.skills.map { it.id }.toSet()
@@ -136,7 +152,7 @@ class SkillRepositoryImpl @Inject constructor(
         val existingImported = existingSkills.associateBy { it.id }
         val existingFromTree = existingSkills.filter { it.sourceTreeUri == uri.toString() }
         val idsSeenInScan = mutableSetOf<String>()
-        val errors = mutableListOf<String>()
+        val errors = processed.flatMapTo(mutableListOf()) { it.warnings }
         val entities = mutableListOf<com.example.nanobot.core.database.entity.CustomSkillEntity>()
         var importedCount = 0
         var updatedCount = 0
@@ -191,6 +207,18 @@ class SkillRepositoryImpl @Inject constructor(
     override suspend fun importSkillsFromZip(uri: Uri): SkillImportResult {
         val extractedRoot = skillZipImporter.importArchive(uri)
         return importSkillsFromDirectory(extractedRoot)
+    }
+
+    override suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt? {
+        return phoneControlUnlockStore.findReceipt(packageId)
+    }
+
+    override suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String> {
+        val packageId = skill.metadata[UNLOCK_PACKAGE_ID_KEY]?.takeIf { it.isNotBlank() } ?: return emptySet()
+        val receipt = phoneControlUnlockStore.findReceipt(packageId) ?: return emptySet()
+        if (!receipt.skillId.equals(skill.id, ignoreCase = true)) return emptySet()
+        if (!receipt.skillSha256.equals(skill.contentHash.orEmpty(), ignoreCase = true)) return emptySet()
+        return phoneControlUnlockProfileRegistry.resolveTools(receipt.unlockProfiles)
     }
 
     override suspend fun removeImportedSkill(id: String) {
@@ -275,5 +303,9 @@ class SkillRepositoryImpl @Inject constructor(
         require(!normalized.startsWith("/")) { "Absolute workspace paths are not allowed for skill resources." }
         require(parts.none { it == ".." }) { "Parent path traversal is not allowed for skill resources." }
         return parts.joinToString("/")
+    }
+
+    private companion object {
+        const val UNLOCK_PACKAGE_ID_KEY = "hidden_unlock_package_id"
     }
 }

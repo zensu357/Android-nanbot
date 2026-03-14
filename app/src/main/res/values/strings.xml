@@ -21,4 +21,6 @@
     <string name="heartbeat_executed_fallback">Nanobot completed a heartbeat task.</string>
     <string name="heartbeat_failed_title">Heartbeat Failed</string>
     <string name="heartbeat_failed_fallback">Nanobot could not finish the heartbeat task.</string>
+    <string name="phone_control_accessibility_service_label">Nanobot Phone Control</string>
+    <string name="phone_control_accessibility_service_description">Nanobot can inspect the current foreground UI to support hidden phone-control tools.</string>
 </resources>

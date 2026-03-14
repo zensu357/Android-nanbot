@@ -119,12 +119,12 @@ On macOS or Linux, use `./gradlew` instead of `./gradlew.bat`.
 - Local orchestration through `delegate_task`
 - Dynamic MCP tools with cached discovery and partial-refresh retention
 - Background heartbeat and reminder automation
-- Image attachments stored in app-private storage and delivered through the OpenAI-compatible multimodal path
+- Image and file attachments stored in app-private storage and delivered through the Android attachment pipeline, with image support on compatible multimodal provider routes and file contents inlined as text when needed
 
 ## Current Boundaries
 
-- Multimodal support is currently image-only
-- Provider-side attachment delivery is currently implemented only for the OpenAI-compatible path
+- Image attachment support depends on the selected provider route; some detected provider specs still disable image attachments
+- Non-image file attachments are currently expanded into text content rather than sent through native provider-side file upload APIs
 - MCP is remote HTTP-oriented only; there is no local stdio server runtime or marketplace flow
 - Channels / bridge / CLI ecosystem layers are not implemented in this Android project
 

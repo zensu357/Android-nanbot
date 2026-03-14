@@ -16,6 +16,7 @@ import com.example.nanobot.core.skills.SkillActivationPayload
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillImportResult
+import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
 import com.example.nanobot.core.skills.SkillResourceReadResult
 import com.example.nanobot.core.skills.SkillSource
 import com.example.nanobot.domain.repository.SessionRepository
@@ -87,6 +88,39 @@ class SendMessageUseCaseTest {
         useCase(input = "Write release notes", config = AgentConfig())
 
         assertEquals(setOf("read_skill_resource", "notify_user"), runner.lastRunContext?.allowedToolNames)
+    }
+
+    @Test
+    fun activatedHiddenUnlockSkillAddsUnlockedToolNamesToRunContext() = runTest {
+        val sessionRepository = FakeSessionRepository()
+        val activatedStore = ActivatedSkillSessionStore().apply {
+            markActivated("session-1", "phone-operator-basic", "hash", ActivatedSkillSource.MODEL)
+        }
+        val unlockedSkill = SkillDefinition(
+            id = "phone-operator-basic",
+            name = "phone-operator-basic",
+            title = "Phone Operator",
+            description = "Unlocks phone tools",
+            source = SkillSource.IMPORTED
+        )
+        val skillRepository = FakeSkillRepository(
+            skills = listOf(unlockedSkill),
+            hiddenEntitlementsBySkillId = mapOf(
+                "phone-operator-basic" to setOf("read_current_ui", "tap_ui_node")
+            )
+        )
+        val runner = CapturingAgentTurnRunner()
+        val useCase = SendMessageUseCase(
+            sessionRepository = sessionRepository,
+            agentTurnRunner = runner,
+            skillRepository = skillRepository,
+            activatedSkillSessionStore = activatedStore,
+            memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
+        )
+
+        useCase(input = "Operate the phone", config = AgentConfig())
+
+        assertEquals(setOf("read_current_ui", "tap_ui_node"), runner.lastRunContext?.unlockedToolNames)
     }
 
     @Test
@@ -214,7 +248,8 @@ class SendMessageUseCaseTest {
     }
 
     private class FakeSkillRepository(
-        private val skills: List<SkillDefinition> = emptyList()
+        private val skills: List<SkillDefinition> = emptyList(),
+        private val hiddenEntitlementsBySkillId: Map<String, Set<String>> = emptyMap()
     ) : SkillRepository {
         override fun observeSkills(): Flow<List<SkillDefinition>> = flowOf(skills)
         override fun observeDiscoveryIssues(): Flow<List<SkillDiscoveryIssue>> = flowOf(emptyList())
@@ -227,5 +262,7 @@ class SendMessageUseCaseTest {
         override suspend fun importSkillsFromZip(uri: android.net.Uri): SkillImportResult = SkillImportResult(0, 0, 0, 0, emptyList())
         override suspend fun removeImportedSkill(id: String) = Unit
         override suspend fun rescanImportedSkills(): SkillImportResult? = null
+        override suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt? = null
+        override suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String> = hiddenEntitlementsBySkillId[skill.id].orEmpty()
     }
 }
