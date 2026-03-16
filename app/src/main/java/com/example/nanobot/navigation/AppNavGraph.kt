@@ -121,6 +121,8 @@ fun AppNavGraph() {
                 onRescanImportedSkills = viewModel::rescanImportedSkills,
                 onRemoveSkillRoot = viewModel::onRemoveSkillRoot,
                 onRemoveImportedSkill = viewModel::onRemoveImportedSkill,
+                onAcceptPendingPhoneControlUnlockConsent = viewModel::acceptPendingPhoneControlUnlockConsent,
+                onRejectPendingPhoneControlUnlockConsent = viewModel::rejectPendingPhoneControlUnlockConsent,
                 onDraftMcpLabelChange = viewModel::onDraftMcpLabelChanged,
                 onDraftMcpEndpointChange = viewModel::onDraftMcpEndpointChanged,
                 onDraftMcpAuthTypeChange = viewModel::onDraftMcpAuthTypeChanged,

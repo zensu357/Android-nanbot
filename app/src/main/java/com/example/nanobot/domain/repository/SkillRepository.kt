@@ -6,6 +6,7 @@ import com.example.nanobot.core.skills.SkillActivationPayload
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillImportResult
+import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.skills.SkillResourceReadResult
 import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
 import kotlinx.coroutines.flow.Flow
@@ -23,5 +24,8 @@ interface SkillRepository {
     suspend fun removeImportedSkill(id: String)
     suspend fun rescanImportedSkills(): SkillImportResult?
     suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt?
+    suspend fun listPendingPhoneControlUnlockConsents(): List<PendingPhoneControlUnlockConsent>
+    suspend fun acceptPendingPhoneControlUnlockConsent(packageId: String): PhoneControlUnlockReceipt?
+    suspend fun rejectPendingPhoneControlUnlockConsent(packageId: String)
     suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String>
 }

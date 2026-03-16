@@ -141,6 +141,7 @@ class SkillRepositoryImpl @Inject constructor(
                 updatedCount = 0,
                 skippedCount = 0,
                 duplicateCount = 0,
+                pendingConsentCount = processed.count { it.scannedSkill.skill.metadata[UNLOCK_PACKAGE_ID_KEY] != null && it.unlockReceipt == null },
                 errors = processed.flatMapTo(mutableListOf()) { it.warnings }.ifEmpty {
                     listOf("No SKILL.md files were found.")
                 }
@@ -200,6 +201,7 @@ class SkillRepositoryImpl @Inject constructor(
             updatedCount = updatedCount,
             skippedCount = skippedCount,
             duplicateCount = duplicateCount,
+            pendingConsentCount = processed.count { it.scannedSkill.skill.metadata[UNLOCK_PACKAGE_ID_KEY] != null && it.unlockReceipt == null },
             errors = errors
         )
     }
@@ -211,6 +213,18 @@ class SkillRepositoryImpl @Inject constructor(
 
     override suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt? {
         return phoneControlUnlockStore.findReceipt(packageId)
+    }
+
+    override suspend fun listPendingPhoneControlUnlockConsents(): List<com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent> {
+        return phoneControlUnlockStore.getPendingConsents()
+    }
+
+    override suspend fun acceptPendingPhoneControlUnlockConsent(packageId: String): PhoneControlUnlockReceipt? {
+        return phoneControlUnlockStore.acceptPendingConsent(packageId)
+    }
+
+    override suspend fun rejectPendingPhoneControlUnlockConsent(packageId: String) {
+        phoneControlUnlockStore.rejectPendingConsent(packageId)
     }
 
     override suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String> {
@@ -242,7 +256,14 @@ class SkillRepositoryImpl @Inject constructor(
             duplicateCount += result.duplicateCount
             aggregateErrors += result.errors
         }
-        return SkillImportResult(importedCount, updatedCount, skippedCount, duplicateCount, aggregateErrors)
+        return SkillImportResult(
+            importedCount = importedCount,
+            updatedCount = updatedCount,
+            skippedCount = skippedCount,
+            duplicateCount = duplicateCount,
+            pendingConsentCount = listPendingPhoneControlUnlockConsents().size,
+            errors = aggregateErrors
+        )
     }
     private suspend fun cleanupEnabledSkillIds() {
         val config = settingsConfigStore.configFlow.first()

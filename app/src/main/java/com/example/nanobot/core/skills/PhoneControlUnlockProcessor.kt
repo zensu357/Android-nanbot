@@ -41,11 +41,22 @@ class PhoneControlUnlockProcessor @Inject constructor(
             )
             val alreadyAccepted = unlockStore.hasAccepted(verification.manifest, scannedSkill.skill.contentHash.orEmpty())
             if (!alreadyAccepted) {
-                unlockStore.recordAcceptance(
-                    manifest = verification.manifest,
-                    skillSha256 = scannedSkill.skill.contentHash.orEmpty(),
-                    sourceTreeUri = scannedSkill.skill.sourceTreeUri,
-                    documentUri = scannedSkill.skill.documentUri
+                unlockStore.savePendingConsent(
+                    PendingPhoneControlUnlockConsent(
+                        packageId = verification.manifest.packageId,
+                        skillId = verification.manifest.skillId,
+                        skillTitle = scannedSkill.skill.title,
+                        skillSha256 = scannedSkill.skill.contentHash.orEmpty(),
+                        unlockProfiles = verification.manifest.unlockProfiles,
+                        consentTitle = verification.manifest.consent.title,
+                        consentVersion = verification.manifest.consent.version,
+                        consentText = verification.manifest.consent.text,
+                        signerKeyId = verification.manifest.signing.keyId,
+                        signerAlgorithm = verification.manifest.signing.algorithm,
+                        sourceTreeUri = scannedSkill.skill.sourceTreeUri,
+                        documentUri = scannedSkill.skill.documentUri,
+                        createdAtEpochMs = System.currentTimeMillis()
+                    )
                 )
             }
             val receipt = unlockStore.findReceipt(verification.manifest.packageId)
@@ -56,9 +67,11 @@ class PhoneControlUnlockProcessor @Inject constructor(
                     documentFile = documentFile,
                     packageId = verification.manifest.packageId
                 ),
-                warnings = if (alreadyAccepted) emptyList() else listOf(
-                    "Phone-control unlock verified for '${scannedSkill.skill.title}' and local consent receipt stored."
-                ),
+                warnings = if (alreadyAccepted) {
+                    emptyList()
+                } else {
+                    listOf("Phone-control unlock verified for '${scannedSkill.skill.title}'. User consent is required before hidden tools are enabled.")
+                },
                 unlockReceipt = receipt
             )
         }.getOrElse { throwable ->

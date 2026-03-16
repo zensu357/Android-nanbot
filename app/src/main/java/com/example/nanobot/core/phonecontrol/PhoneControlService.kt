@@ -31,6 +31,24 @@ open class PhoneControlService @Inject constructor(
         )
     }
 
+    open fun performGlobalAction(action: PhoneGlobalAction): PhoneControlActionResult {
+        val service = PhoneControlAccessibilityService.getInstance()
+            ?: return PhoneControlActionResult(
+                success = false,
+                message = "Phone-control accessibility service is not enabled. Enable the Nanobot accessibility service in Android accessibility settings first."
+            )
+        return service.performGlobalAction(action)
+    }
+
+    open fun tapUiNode(selector: PhoneUiNodeSelector): PhoneControlActionResult {
+        val service = PhoneControlAccessibilityService.getInstance()
+            ?: return PhoneControlActionResult(
+                success = false,
+                message = "Phone-control accessibility service is not enabled. Enable the Nanobot accessibility service in Android accessibility settings first."
+            )
+        return service.tapNode(selector)
+    }
+
     open fun launchApp(packageName: String): Boolean {
         val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

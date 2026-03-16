@@ -12,6 +12,7 @@ import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.core.model.AgentTurnResult
 import com.example.nanobot.core.skills.ActivatedSkillSource
 import com.example.nanobot.core.skills.ActivatedSkillSessionStore
+import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.skills.SkillActivationPayload
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
@@ -258,11 +259,14 @@ class SendMessageUseCaseTest {
         override suspend fun getSkillByName(name: String): SkillDefinition? = skills.firstOrNull { it.name == name || it.id == name }
         override suspend fun activateSkill(name: String): SkillActivationPayload? = null
         override suspend fun readSkillResource(name: String, relativePath: String, sessionId: String, maxChars: Int): SkillResourceReadResult? = null
-        override suspend fun importSkillsFromDirectory(uri: android.net.Uri): SkillImportResult = SkillImportResult(0, 0, 0, 0, emptyList())
-        override suspend fun importSkillsFromZip(uri: android.net.Uri): SkillImportResult = SkillImportResult(0, 0, 0, 0, emptyList())
+        override suspend fun importSkillsFromDirectory(uri: android.net.Uri): SkillImportResult = SkillImportResult(0, 0, 0, 0, errors = emptyList())
+        override suspend fun importSkillsFromZip(uri: android.net.Uri): SkillImportResult = SkillImportResult(0, 0, 0, 0, errors = emptyList())
         override suspend fun removeImportedSkill(id: String) = Unit
         override suspend fun rescanImportedSkills(): SkillImportResult? = null
         override suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt? = null
+        override suspend fun listPendingPhoneControlUnlockConsents(): List<PendingPhoneControlUnlockConsent> = emptyList()
+        override suspend fun acceptPendingPhoneControlUnlockConsent(packageId: String): PhoneControlUnlockReceipt? = null
+        override suspend fun rejectPendingPhoneControlUnlockConsent(packageId: String) = Unit
         override suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String> = hiddenEntitlementsBySkillId[skill.id].orEmpty()
     }
 }

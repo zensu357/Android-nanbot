@@ -7,6 +7,7 @@ import com.example.nanobot.core.mcp.McpServerDefinition
 import com.example.nanobot.core.mcp.McpServerHealth
 import com.example.nanobot.core.skills.SkillDiagnosticKind
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.model.ProviderType
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDefinition
@@ -39,6 +40,19 @@ data class SkillDiagnosticItemUiState(
 data class SkillDiagnosticSectionUiState(
     val title: String,
     val items: List<SkillDiagnosticItemUiState>
+)
+
+data class PendingPhoneControlUnlockConsentUiState(
+    val packageId: String,
+    val skillId: String,
+    val skillTitle: String,
+    val unlockProfiles: List<String>,
+    val consentTitle: String,
+    val consentVersion: String,
+    val consentText: String,
+    val signerKeyId: String,
+    val signerAlgorithm: String,
+    val createdAtEpochMs: Long
 )
 
 data class McpServerUiState(
@@ -86,6 +100,7 @@ data class SettingsDraftState(
     val trustProjectSkills: Boolean = false,
     val skillImportStatus: String? = null,
     val skillDiagnostics: List<SkillDiagnosticSectionUiState> = emptyList(),
+    val pendingPhoneControlUnlockConsents: List<PendingPhoneControlUnlockConsentUiState> = emptyList(),
     val mcpServers: List<McpServerUiState> = emptyList(),
     val draftMcpLabel: String = "",
     val draftMcpEndpoint: String = "",
@@ -111,6 +126,7 @@ data class SettingsBaselineState(
     val skillRoots: List<String>,
     val trustProjectSkills: Boolean,
     val skillDiscoveryIssues: List<SkillDiscoveryIssue>,
+    val pendingUnlockConsents: List<PendingPhoneControlUnlockConsent> = emptyList(),
     val mcpServers: List<McpServerDefinition>,
     val mcpToolCounts: Map<String, Int>
 )
@@ -153,6 +169,7 @@ data class SettingsUiState(
     val trustProjectSkills: Boolean get() = draft.trustProjectSkills
     val skillImportStatus: String? get() = draft.skillImportStatus
     val skillDiagnostics: List<SkillDiagnosticSectionUiState> get() = draft.skillDiagnostics
+    val pendingPhoneControlUnlockConsents: List<PendingPhoneControlUnlockConsentUiState> get() = draft.pendingPhoneControlUnlockConsents
     val mcpServers: List<McpServerUiState> get() = draft.mcpServers
     val draftMcpLabel: String get() = draft.draftMcpLabel
     val draftMcpEndpoint: String get() = draft.draftMcpEndpoint
@@ -221,6 +238,7 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
                     }.sortedWith(compareBy({ it.scopeLabel }, { it.message.lowercase() }))
                 )
             },
+        pendingPhoneControlUnlockConsents = pendingUnlockConsents.map { it.toUiState() },
         mcpServers = mcpServers.map { server ->
             McpServerUiState(
                 id = server.id,
@@ -259,6 +277,21 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
     )
 }
 
+fun PendingPhoneControlUnlockConsent.toUiState(): PendingPhoneControlUnlockConsentUiState {
+    return PendingPhoneControlUnlockConsentUiState(
+        packageId = packageId,
+        skillId = skillId,
+        skillTitle = skillTitle,
+        unlockProfiles = unlockProfiles,
+        consentTitle = consentTitle,
+        consentVersion = consentVersion,
+        consentText = consentText,
+        signerKeyId = signerKeyId,
+        signerAlgorithm = signerAlgorithm,
+        createdAtEpochMs = createdAtEpochMs
+    )
+}
+
 private fun diagnosticKindTitle(kind: SkillDiagnosticKind): String {
     return when (kind) {
         SkillDiagnosticKind.LOADED -> "Loaded"
@@ -279,6 +312,12 @@ private fun diagnosticKindOrder(kind: SkillDiagnosticKind): Int {
         SkillDiagnosticKind.SKIPPED -> 4
         SkillDiagnosticKind.LOADED -> 5
     }
+}
+
+fun SettingsBaselineState.withPendingUnlockConsents(
+    pendingUnlockConsents: List<PendingPhoneControlUnlockConsent>
+): SettingsBaselineState {
+    return copy(pendingUnlockConsents = pendingUnlockConsents)
 }
 
 fun SettingsDraftState.toAgentConfig(): AgentConfig {

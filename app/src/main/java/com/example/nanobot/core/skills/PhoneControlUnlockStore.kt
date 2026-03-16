@@ -26,6 +26,7 @@ class PhoneControlUnlockStore @Inject constructor(
         val directory = File(context.filesDir, "skill_unlock_receipts/${safeSegment(receipt.packageId)}")
         directory.mkdirs()
         File(directory, "p-c.unlock.json").writeText(json.encodeToString(receipt))
+        File(directory, "pending-consent.json").delete()
     }
 
     suspend fun findReceipt(packageId: String): PhoneControlUnlockReceipt? = withContext(Dispatchers.IO) {
@@ -72,6 +73,60 @@ class PhoneControlUnlockStore @Inject constructor(
                 documentUri = documentUri
             )
         )
+    }
+
+    suspend fun savePendingConsent(consent: PendingPhoneControlUnlockConsent) = withContext(Dispatchers.IO) {
+        val directory = File(context.filesDir, "skill_unlock_receipts/${safeSegment(consent.packageId)}")
+        directory.mkdirs()
+        File(directory, "pending-consent.json").writeText(json.encodeToString(consent))
+    }
+
+    suspend fun getPendingConsents(): List<PendingPhoneControlUnlockConsent> = withContext(Dispatchers.IO) {
+        val root = File(context.filesDir, "skill_unlock_receipts")
+        if (!root.exists() || !root.isDirectory) return@withContext emptyList()
+        root.listFiles()
+            .orEmpty()
+            .filter { it.isDirectory }
+            .mapNotNull { directory ->
+                val file = File(directory, "pending-consent.json")
+                if (!file.exists()) return@mapNotNull null
+                runCatching {
+                    json.decodeFromString<PendingPhoneControlUnlockConsent>(file.readText())
+                }.getOrNull()
+            }
+            .sortedByDescending { it.createdAtEpochMs }
+    }
+
+    suspend fun findPendingConsent(packageId: String): PendingPhoneControlUnlockConsent? = withContext(Dispatchers.IO) {
+        val file = File(context.filesDir, "skill_unlock_receipts/${safeSegment(packageId)}/pending-consent.json")
+        if (!file.exists()) return@withContext null
+        runCatching {
+            json.decodeFromString<PendingPhoneControlUnlockConsent>(file.readText())
+        }.getOrNull()
+    }
+
+    suspend fun acceptPendingConsent(packageId: String): PhoneControlUnlockReceipt? = withContext(Dispatchers.IO) {
+        val pending = findPendingConsent(packageId) ?: return@withContext null
+        val receipt = PhoneControlUnlockReceipt(
+            packageId = pending.packageId,
+            skillId = pending.skillId,
+            skillSha256 = pending.skillSha256,
+            unlockProfiles = pending.unlockProfiles,
+            signerKeyId = pending.signerKeyId,
+            signerAlgorithm = pending.signerAlgorithm,
+            consentTitle = pending.consentTitle,
+            consentVersion = pending.consentVersion,
+            consentTextSha256 = verifier.sha256(pending.consentText),
+            storedAtEpochMs = System.currentTimeMillis(),
+            sourceTreeUri = pending.sourceTreeUri,
+            documentUri = pending.documentUri
+        )
+        saveReceipt(receipt)
+        receipt
+    }
+
+    suspend fun rejectPendingConsent(packageId: String) = withContext(Dispatchers.IO) {
+        File(context.filesDir, "skill_unlock_receipts/${safeSegment(packageId)}/pending-consent.json").delete()
     }
 
     private fun safeSegment(value: String): String {

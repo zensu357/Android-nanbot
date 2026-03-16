@@ -2,12 +2,18 @@ package com.example.nanobot.core.tools
 
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.phonecontrol.PhoneControlActionResult
+import com.example.nanobot.core.phonecontrol.PhoneControlService
+import com.example.nanobot.core.phonecontrol.PhoneGlobalAction
 import com.example.nanobot.core.phonecontrol.PhoneUiNode
+import com.example.nanobot.core.phonecontrol.PhoneUiNodeSelector
 import com.example.nanobot.core.phonecontrol.PhoneUiSnapshot
 import com.example.nanobot.core.phonecontrol.PhoneUiSnapshotFormatter
 import com.example.nanobot.core.tools.impl.BasePhoneControlTool
 import com.example.nanobot.core.tools.impl.InputTextTool
+import com.example.nanobot.core.tools.impl.LaunchAppTool
 import com.example.nanobot.core.tools.impl.PressGlobalActionTool
+import com.example.nanobot.core.tools.impl.ReadCurrentUiTool
 import com.example.nanobot.core.tools.impl.ScrollUiTool
 import com.example.nanobot.core.tools.impl.TapUiNodeTool
 import com.example.nanobot.core.tools.impl.WaitForUiTool
@@ -17,10 +23,112 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.robolectric.RuntimeEnvironment
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class PhoneControlToolsTest {
     private val formatter = PhoneUiSnapshotFormatter()
-    private val fakePhoneControlService = object : PhoneControlServiceLike {
+    private val fakePhoneControlService = FakePhoneControlService()
+
+    private val tools = listOf(
+        ReadCurrentUiTool(fakePhoneControlService, formatter),
+        TapUiNodeTool(fakePhoneControlService),
+        InputTextTool(),
+        ScrollUiTool(),
+        PressGlobalActionTool(fakePhoneControlService),
+        LaunchAppTool(fakePhoneControlService),
+        WaitForUiTool()
+    )
+
+    @Test
+    fun allPhoneControlToolsAreHiddenUnlockable() {
+        assertTrue(tools.all { it.exposure == ToolExposure.HIDDEN_UNLOCKABLE })
+    }
+
+    @Test
+    fun readCurrentUiFormatsSnapshot() = runTest {
+        val result = ReadCurrentUiTool(fakePhoneControlService, formatter).execute(
+            buildJsonObject {
+                put("includeNonInteractive", false)
+                put("maxNodes", 20)
+            },
+            AgentConfig(enableTools = true),
+            unlockedRunContext()
+        )
+
+        assertTrue(result.contains("Phone UI Snapshot"))
+        assertTrue(result.contains("Package: com.android.settings"))
+    }
+
+    @Test
+    fun pressGlobalActionDelegatesToPhoneControlService() = runTest {
+        val result = PressGlobalActionTool(fakePhoneControlService).execute(
+            buildJsonObject { put("action", "home") },
+            AgentConfig(enableTools = true),
+            unlockedRunContext()
+        )
+
+        assertEquals("Performed global action 'home'.", result)
+        assertEquals(PhoneGlobalAction.HOME, fakePhoneControlService.lastGlobalAction)
+    }
+
+    @Test
+    fun tapUiNodeDelegatesToPhoneControlService() = runTest {
+        val result = TapUiNodeTool(fakePhoneControlService).execute(
+            buildJsonObject {
+                put("text", "Wi-Fi")
+            },
+            AgentConfig(enableTools = true),
+            unlockedRunContext()
+        )
+
+        assertEquals("Tapped UI node 'android:id/title'.", result)
+        assertEquals(
+            PhoneUiNodeSelector(text = "Wi-Fi"),
+            fakePhoneControlService.lastNodeSelector
+        )
+    }
+
+    @Test
+    fun launchAppInvokesPhoneControlService() = runTest {
+        val result = LaunchAppTool(fakePhoneControlService).execute(
+            buildJsonObject { put("packageName", "com.android.settings") },
+            AgentConfig(enableTools = true),
+            unlockedRunContext()
+        )
+
+        assertEquals("Launched package 'com.android.settings'.", result)
+        assertEquals("com.android.settings", fakePhoneControlService.lastLaunchedPackage)
+    }
+
+    @Test
+    fun stubToolsStillReturnStubMessage() = runTest {
+        val inputResult = InputTextTool().execute(
+            buildJsonObject {
+                put("nodeId", "input-1")
+                put("text", "hello")
+            },
+            AgentConfig(enableTools = true),
+            unlockedRunContext()
+        )
+
+        assertTrue(inputResult.contains("not wired in yet"))
+    }
+
+    private fun unlockedRunContext(): AgentRunContext {
+        return AgentRunContext.root(
+            sessionId = "session-1",
+            unlockedToolNames = tools.map { it.name }.toSet()
+        )
+    }
+
+    private class FakePhoneControlService : PhoneControlService(RuntimeEnvironment.getApplication()) {
+        var lastGlobalAction: PhoneGlobalAction? = null
+        var lastNodeSelector: PhoneUiNodeSelector? = null
+        var lastLaunchedPackage: String? = null
+
         override fun readCurrentUi(includeNonInteractive: Boolean, maxNodes: Int): PhoneUiSnapshot {
             return PhoneUiSnapshot(
                 serviceConnected = true,
@@ -49,101 +157,21 @@ class PhoneControlToolsTest {
             )
         }
 
+        override fun performGlobalAction(action: PhoneGlobalAction): PhoneControlActionResult {
+            lastGlobalAction = action
+            return PhoneControlActionResult(true, "Performed global action '${action.wireName}'.")
+        }
+
+        override fun tapUiNode(selector: PhoneUiNodeSelector): PhoneControlActionResult {
+            lastNodeSelector = selector
+            return PhoneControlActionResult(true, "Tapped UI node 'android:id/title'.")
+        }
+
+        override fun launchApp(packageName: String): Boolean {
+            lastLaunchedPackage = packageName
+            return true
+        }
+
         override fun isPackageInstalled(packageName: String): Boolean = packageName == "com.android.settings"
-    }
-
-    private val tools = listOf(
-        TestReadCurrentUiTool(fakePhoneControlService, formatter),
-        TapUiNodeTool(),
-        InputTextTool(),
-        ScrollUiTool(),
-        PressGlobalActionTool(),
-        TestLaunchAppTool(fakePhoneControlService),
-        WaitForUiTool()
-    )
-
-    @Test
-    fun allPhoneControlToolsAreHiddenUnlockable() {
-        assertTrue(tools.all { it.exposure == ToolExposure.HIDDEN_UNLOCKABLE })
-    }
-
-    @Test
-    fun skeletonToolsReturnStubMessageWhenExecuted() = runTest {
-        val config = AgentConfig(enableTools = true)
-        val runContext = AgentRunContext.root(
-            sessionId = "session-1",
-            unlockedToolNames = tools.map { it.name }.toSet()
-        )
-
-        val uiResult = TestReadCurrentUiTool(fakePhoneControlService, formatter).execute(
-            buildJsonObject {
-                put("includeNonInteractive", false)
-                put("maxNodes", 20)
-            },
-            config,
-            runContext
-        )
-        val launchResult = TestLaunchAppTool(fakePhoneControlService).execute(
-            buildJsonObject { put("packageName", "com.android.settings") },
-            config,
-            runContext
-        )
-
-        assertTrue(uiResult.contains("Phone UI Snapshot"))
-        assertTrue(launchResult.contains("com.android.settings"))
-    }
-
-    @Test
-    fun phoneControlToolsKeepExpectedNames() {
-        assertEquals(
-            listOf(
-                "read_current_ui",
-                "tap_ui_node",
-                "input_text",
-                "scroll_ui",
-                "press_global_action",
-                "launch_app",
-                "wait_for_ui"
-            ),
-            tools.map { it.name }
-        )
-    }
-
-    private interface PhoneControlServiceLike {
-        fun readCurrentUi(includeNonInteractive: Boolean, maxNodes: Int): PhoneUiSnapshot
-        fun isPackageInstalled(packageName: String): Boolean
-    }
-
-    private class TestReadCurrentUiTool(
-        private val service: PhoneControlServiceLike,
-        private val snapshotFormatter: PhoneUiSnapshotFormatter
-    ) : BasePhoneControlTool() {
-        override val name: String = "read_current_ui"
-        override val description: String = "Reads a structured summary of the current foreground Android UI"
-        override val accessCategory: ToolAccessCategory = ToolAccessCategory.LOCAL_READ_ONLY
-        override val parametersSchema: kotlinx.serialization.json.JsonObject = buildJsonObject { }
-
-        override suspend fun execute(arguments: kotlinx.serialization.json.JsonObject, config: AgentConfig, runContext: AgentRunContext): String {
-            val snapshot = service.readCurrentUi(false, 20)
-            return snapshotFormatter.format(snapshot)
-        }
-    }
-
-    private class TestLaunchAppTool(
-        private val service: PhoneControlServiceLike
-    ) : BasePhoneControlTool() {
-        override val name: String = "launch_app"
-        override val description: String = "Launches an Android app by package name"
-        override val accessCategory: ToolAccessCategory = ToolAccessCategory.LOCAL_SIDE_EFFECT
-        override val parametersSchema: kotlinx.serialization.json.JsonObject = buildJsonObject { }
-
-        override suspend fun execute(arguments: kotlinx.serialization.json.JsonObject, config: AgentConfig, runContext: AgentRunContext): String {
-            val packageName = arguments["packageName"]?.toString().orEmpty()
-            return if (service.isPackageInstalled("com.android.settings")) {
-                notImplemented("Requested launch for package '$packageName'.")
-            } else {
-                "Package '$packageName' is not installed on this device."
-            }
-        }
     }
 }

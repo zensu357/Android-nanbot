@@ -11,6 +11,8 @@ import com.example.nanobot.core.mcp.McpToolDescriptor
 import com.example.nanobot.core.mcp.McpToolDiscoverySnapshot
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.preferences.SettingsConfigStore
+import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
+import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
 import com.example.nanobot.core.skills.SkillDiagnosticKind
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillScope
@@ -181,6 +183,83 @@ class SettingsViewModelTest {
         assertEquals("project", diagnostics.first().items.single().scopeLabel)
     }
 
+    @Test
+    fun pendingPhoneControlUnlockConsentAppearsInSettingsUiAndCanBeAccepted() = runSettingsTest {
+        val skillRepository = FakeSkillRepositoryWithConsent(
+            pendingConsents = mutableListOf(
+                PendingPhoneControlUnlockConsent(
+                    packageId = "pkg.phone-operator-basic",
+                    skillId = "phone-operator-basic",
+                    skillTitle = "Phone Operator",
+                    skillSha256 = "hash",
+                    unlockProfiles = listOf("phone_control_basic_v1"),
+                    consentTitle = "Phone Control Hidden Feature Agreement",
+                    consentVersion = "2026-03-14",
+                    consentText = "I agree to use this responsibly.",
+                    signerKeyId = "publisher-main",
+                    signerAlgorithm = "Ed25519",
+                    sourceTreeUri = "content://skills/tree",
+                    documentUri = "content://skills/tree/phone-operator-basic/SKILL.md",
+                    createdAtEpochMs = 1L
+                )
+            )
+        )
+        val viewModel = createViewModel(
+            settingsStore = FakeSettingsConfigStore(AgentConfig()),
+            heartbeatRepository = FakeHeartbeatRepository(),
+            mcpRegistry = FakeMcpRegistry(),
+            workerScheduler = FakeWorkerScheduler(),
+            skillRepository = skillRepository
+        )
+
+        advanceUntilIdle()
+        assertEquals(1, viewModel.uiState.value.pendingPhoneControlUnlockConsents.size)
+
+        viewModel.acceptPendingPhoneControlUnlockConsent("pkg.phone-operator-basic")
+        advanceUntilIdle()
+
+        assertTrue(skillRepository.acceptedPackageIds.contains("pkg.phone-operator-basic"))
+        assertTrue(viewModel.uiState.value.skillImportStatus?.contains("Accepted unlock consent") == true)
+        assertTrue(viewModel.uiState.value.pendingPhoneControlUnlockConsents.isEmpty())
+    }
+
+    @Test
+    fun pendingPhoneControlUnlockConsentStillAppearsWhenDraftIsDirty() = runSettingsTest {
+        val skillRepository = FakeSkillRepositoryWithConsent(
+            pendingConsents = mutableListOf(
+                PendingPhoneControlUnlockConsent(
+                    packageId = "pkg.phone-operator-basic",
+                    skillId = "phone-operator-basic",
+                    skillTitle = "Phone Operator",
+                    skillSha256 = "hash",
+                    unlockProfiles = listOf("phone_control_basic_v1"),
+                    consentTitle = "Phone Control Hidden Feature Agreement",
+                    consentVersion = "2026-03-14",
+                    consentText = "I agree to use this responsibly.",
+                    signerKeyId = "publisher-main",
+                    signerAlgorithm = "Ed25519",
+                    sourceTreeUri = "content://skills/tree",
+                    documentUri = "content://skills/tree/phone-operator-basic/SKILL.md",
+                    createdAtEpochMs = 1L
+                )
+            )
+        )
+        val viewModel = createViewModel(
+            settingsStore = FakeSettingsConfigStore(AgentConfig(apiKey = "baseline")),
+            heartbeatRepository = FakeHeartbeatRepository(),
+            mcpRegistry = FakeMcpRegistry(),
+            workerScheduler = FakeWorkerScheduler(),
+            skillRepository = skillRepository
+        )
+
+        advanceUntilIdle()
+        viewModel.onApiKeyChanged("dirty-change")
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.isDirty)
+        assertEquals(1, viewModel.uiState.value.pendingPhoneControlUnlockConsents.size)
+    }
+
     private fun runSettingsTest(block: suspend kotlinx.coroutines.test.TestScope.() -> Unit) {
         val dispatcher = StandardTestDispatcher()
         Dispatchers.setMain(dispatcher)
@@ -198,7 +277,7 @@ class SettingsViewModelTest {
         heartbeatRepository: HeartbeatRepository,
         mcpRegistry: McpRegistry,
         workerScheduler: WorkerSchedulingController,
-        skillRepository: FakeSkillRepository = FakeSkillRepository()
+        skillRepository: com.example.nanobot.domain.repository.SkillRepository = FakeSkillRepository()
     ): SettingsViewModel {
         return SettingsViewModel(
             settingsDataStore = settingsStore,
@@ -208,6 +287,40 @@ class SettingsViewModelTest {
             heartbeatRepository = heartbeatRepository,
             nanobotWorkerScheduler = workerScheduler
         )
+    }
+
+    private class FakeSkillRepositoryWithConsent(
+        private val pendingConsents: MutableList<PendingPhoneControlUnlockConsent>
+    ) : com.example.nanobot.domain.repository.SkillRepository by FakeSkillRepository() {
+        val acceptedPackageIds = mutableListOf<String>()
+
+        override suspend fun listPendingPhoneControlUnlockConsents(): List<PendingPhoneControlUnlockConsent> {
+            return pendingConsents.toList()
+        }
+
+        override suspend fun acceptPendingPhoneControlUnlockConsent(packageId: String): PhoneControlUnlockReceipt? {
+            val consent = pendingConsents.firstOrNull { it.packageId == packageId } ?: return null
+            acceptedPackageIds += packageId
+            pendingConsents.removeAll { it.packageId == packageId }
+            return PhoneControlUnlockReceipt(
+                packageId = consent.packageId,
+                skillId = consent.skillId,
+                skillSha256 = consent.skillSha256,
+                unlockProfiles = consent.unlockProfiles,
+                signerKeyId = consent.signerKeyId,
+                signerAlgorithm = consent.signerAlgorithm,
+                consentTitle = consent.consentTitle,
+                consentVersion = consent.consentVersion,
+                consentTextSha256 = "hash",
+                storedAtEpochMs = 1L,
+                sourceTreeUri = consent.sourceTreeUri,
+                documentUri = consent.documentUri
+            )
+        }
+
+        override suspend fun rejectPendingPhoneControlUnlockConsent(packageId: String) {
+            pendingConsents.removeAll { it.packageId == packageId }
+        }
     }
 
     private class FakeSettingsConfigStore(initial: AgentConfig) : SettingsConfigStore {

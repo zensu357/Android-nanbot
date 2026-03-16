@@ -7,6 +7,7 @@ import com.example.nanobot.core.skills.SkillCatalog
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillImportResult
+import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
 import com.example.nanobot.core.skills.SkillResourceReadResult
 import com.example.nanobot.domain.repository.SkillRepository
@@ -56,6 +57,12 @@ class FakeSkillRepository(
     override suspend fun rescanImportedSkills(): SkillImportResult? = null
 
     override suspend fun getPhoneControlUnlockReceipt(packageId: String): PhoneControlUnlockReceipt? = null
+
+    override suspend fun listPendingPhoneControlUnlockConsents(): List<PendingPhoneControlUnlockConsent> = emptyList()
+
+    override suspend fun acceptPendingPhoneControlUnlockConsent(packageId: String): PhoneControlUnlockReceipt? = null
+
+    override suspend fun rejectPendingPhoneControlUnlockConsent(packageId: String) = Unit
 
     override suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String> = emptySet()
 }

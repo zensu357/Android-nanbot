@@ -2,6 +2,8 @@ package com.example.nanobot.core.tools.impl
 
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.phonecontrol.PhoneGlobalAction
+import com.example.nanobot.core.phonecontrol.PhoneUiNodeSelector
 import com.example.nanobot.core.phonecontrol.PhoneControlService
 import com.example.nanobot.core.phonecontrol.PhoneUiSnapshotFormatter
 import com.example.nanobot.core.tools.AgentTool
@@ -64,7 +66,9 @@ class ReadCurrentUiTool @Inject constructor(
     }
 }
 
-class TapUiNodeTool @Inject constructor() : BasePhoneControlTool() {
+class TapUiNodeTool @Inject constructor(
+    private val phoneControlService: PhoneControlService
+) : BasePhoneControlTool() {
     override val name: String = "tap_ui_node"
     override val description: String = "Taps a foreground UI node selected by semantic fields such as nodeId, text, or contentDescription"
     override val accessCategory: ToolAccessCategory = ToolAccessCategory.LOCAL_SIDE_EFFECT
@@ -90,9 +94,17 @@ class TapUiNodeTool @Inject constructor() : BasePhoneControlTool() {
         val nodeId = arguments["nodeId"]?.jsonPrimitive?.contentOrNull
         val text = arguments["text"]?.jsonPrimitive?.contentOrNull
         val contentDescription = arguments["contentDescription"]?.jsonPrimitive?.contentOrNull
-        return notImplemented(
-            "Requested tap for nodeId=${nodeId ?: "(none)"}, text=${text ?: "(none)"}, contentDescription=${contentDescription ?: "(none)"}."
+        if (nodeId.isNullOrBlank() && text.isNullOrBlank() && contentDescription.isNullOrBlank()) {
+            return "Provide at least one selector for tap_ui_node: 'nodeId', 'text', or 'contentDescription'."
+        }
+        val result = phoneControlService.tapUiNode(
+            PhoneUiNodeSelector(
+                nodeId = nodeId,
+                text = text,
+                contentDescription = contentDescription
+            )
         )
+        return result.message
     }
 }
 
@@ -159,7 +171,9 @@ class ScrollUiTool @Inject constructor() : BasePhoneControlTool() {
     }
 }
 
-class PressGlobalActionTool @Inject constructor() : BasePhoneControlTool() {
+class PressGlobalActionTool @Inject constructor(
+    private val phoneControlService: PhoneControlService
+) : BasePhoneControlTool() {
     override val name: String = "press_global_action"
     override val description: String = "Invokes a global Android action such as back, home, or recents"
     override val accessCategory: ToolAccessCategory = ToolAccessCategory.LOCAL_SIDE_EFFECT
@@ -181,7 +195,9 @@ class PressGlobalActionTool @Inject constructor() : BasePhoneControlTool() {
 
     override suspend fun execute(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): String {
         val action = arguments["action"]?.jsonPrimitive?.contentOrNull ?: "back"
-        return notImplemented("Requested global action '$action'.")
+        val parsed = PhoneGlobalAction.from(action)
+            ?: return "Unsupported global action '$action'. Supported values: back, home, recents."
+        return phoneControlService.performGlobalAction(parsed).message
     }
 }
 
@@ -209,8 +225,10 @@ class LaunchAppTool @Inject constructor(
         }
         return if (!phoneControlService.isPackageInstalled(packageName)) {
             "Package '$packageName' is not installed on this device."
+        } else if (phoneControlService.launchApp(packageName)) {
+            "Launched package '$packageName'."
         } else {
-            notImplemented("Requested launch for package '$packageName'.")
+            "Failed to launch package '$packageName'."
         }
     }
 }

@@ -144,5 +144,6 @@ data class SkillImportResult(
     val updatedCount: Int,
     val skippedCount: Int,
     val duplicateCount: Int,
+    val pendingConsentCount: Int = 0,
     val errors: List<String> = emptyList()
 )

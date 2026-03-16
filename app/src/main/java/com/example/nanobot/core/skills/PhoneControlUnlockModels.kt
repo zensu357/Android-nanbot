@@ -47,6 +47,23 @@ data class PhoneControlUnlockReceipt(
     val unlockFileName: String = PHONE_CONTROL_UNLOCK_FILE_NAME
 )
 
+@Serializable
+data class PendingPhoneControlUnlockConsent(
+    val packageId: String,
+    val skillId: String,
+    val skillTitle: String,
+    val skillSha256: String,
+    val unlockProfiles: List<String>,
+    val consentTitle: String,
+    val consentVersion: String,
+    val consentText: String,
+    val signerKeyId: String,
+    val signerAlgorithm: String,
+    val sourceTreeUri: String?,
+    val documentUri: String?,
+    val createdAtEpochMs: Long
+)
+
 data class PhoneControlUnlockVerificationResult(
     val manifest: PhoneControlUnlockManifest,
     val canonicalPayload: String

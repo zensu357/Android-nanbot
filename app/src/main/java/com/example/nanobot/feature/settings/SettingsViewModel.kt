@@ -31,10 +31,14 @@ class SettingsViewModel @Inject constructor(
     private val uiStateInternal = MutableStateFlow(
         SettingsUiState(availablePresets = promptPresetCatalog.presets.map { it.id })
     )
+    private val pendingUnlockConsentsState = MutableStateFlow(emptyList<com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent>())
 
     val uiState: StateFlow<SettingsUiState> = uiStateInternal.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            refreshPendingUnlockConsents()
+        }
         viewModelScope.launch {
             combine(
                 settingsDataStore.configFlow,
@@ -43,6 +47,7 @@ class SettingsViewModel @Inject constructor(
                 settingsDataStore.trustProjectSkillsFlow,
                 skillRepository.observeSkills(),
                 skillRepository.observeDiscoveryIssues(),
+                pendingUnlockConsentsState,
                 mcpRegistry.observeServers(),
                 mcpRegistry.observeCachedTools(),
                 heartbeatRepository.observeHeartbeatEnabled(),
@@ -54,10 +59,11 @@ class SettingsViewModel @Inject constructor(
                 val trustProjectSkills = values[3] as Boolean
                 val skills = values[4] as List<com.example.nanobot.core.skills.SkillDefinition>
                 val skillDiscoveryIssues = values[5] as List<com.example.nanobot.core.skills.SkillDiscoveryIssue>
-                val mcpServers = values[6] as List<com.example.nanobot.core.mcp.McpServerDefinition>
-                val mcpTools = values[7] as List<com.example.nanobot.core.mcp.McpToolDescriptor>
-                val heartbeatEnabled = values[8] as Boolean
-                val heartbeatInstructions = values[9] as String
+                val pendingUnlockConsents = values[6] as List<com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent>
+                val mcpServers = values[7] as List<com.example.nanobot.core.mcp.McpServerDefinition>
+                val mcpTools = values[8] as List<com.example.nanobot.core.mcp.McpToolDescriptor>
+                val heartbeatEnabled = values[9] as Boolean
+                val heartbeatInstructions = values[10] as String
                 SettingsBaselineState(
                     config = config,
                     heartbeatEnabled = heartbeatEnabled,
@@ -67,6 +73,7 @@ class SettingsViewModel @Inject constructor(
                     skillRoots = skillRoots,
                     trustProjectSkills = trustProjectSkills,
                     skillDiscoveryIssues = skillDiscoveryIssues,
+                    pendingUnlockConsents = pendingUnlockConsents,
                     mcpServers = mcpServers,
                     mcpToolCounts = mcpTools.groupingBy { it.serverId }.eachCount()
                 )
@@ -122,6 +129,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.addSkillRootUri(uri.toString())
             val result = skillRepository.importSkillsFromDirectory(uri)
+            refreshPendingUnlockConsents()
             val status = buildSkillImportStatus("Import", result)
             updateUiState { current -> current.copy(draft = current.draft.copy(skillImportStatus = status)) }
         }
@@ -130,8 +138,48 @@ class SettingsViewModel @Inject constructor(
     fun onSkillZipSelected(uri: Uri) {
         viewModelScope.launch {
             val result = skillRepository.importSkillsFromZip(uri)
+            refreshPendingUnlockConsents()
             val status = buildSkillImportStatus("Zip import", result)
             updateUiState { current -> current.copy(draft = current.draft.copy(skillImportStatus = status)) }
+        }
+    }
+
+    fun acceptPendingPhoneControlUnlockConsent(packageId: String) {
+        viewModelScope.launch {
+            val receipt = skillRepository.acceptPendingPhoneControlUnlockConsent(packageId)
+            val status = if (receipt == null) {
+                "Unlock consent could not be accepted because the pending request no longer exists."
+            } else {
+                "Accepted unlock consent for '${receipt.skillId}'. Hidden phone-control tools can now be unlocked by this skill."
+            }
+            refreshPendingUnlockConsents()
+            val pendingConsents = pendingUnlockConsentsState.value
+            updateUiState { current ->
+                val updatedBaseline = current.baseline?.withPendingUnlockConsents(pendingConsents)
+                current.copy(
+                    baseline = updatedBaseline,
+                    draft = (updatedBaseline?.toDraftState() ?: current.draft).copy(skillImportStatus = status),
+                    isDirty = current.isDirty
+                )
+            }
+        }
+    }
+
+    fun rejectPendingPhoneControlUnlockConsent(packageId: String) {
+        viewModelScope.launch {
+            skillRepository.rejectPendingPhoneControlUnlockConsent(packageId)
+            refreshPendingUnlockConsents()
+            val pendingConsents = pendingUnlockConsentsState.value
+            updateUiState { current ->
+                val updatedBaseline = current.baseline?.withPendingUnlockConsents(pendingConsents)
+                current.copy(
+                    baseline = updatedBaseline,
+                    draft = (updatedBaseline?.toDraftState() ?: current.draft).copy(
+                        skillImportStatus = "Rejected hidden phone-control unlock request."
+                    ),
+                    isDirty = current.isDirty
+                )
+            }
         }
     }
 
@@ -164,6 +212,7 @@ class SettingsViewModel @Inject constructor(
     fun rescanImportedSkills() {
         viewModelScope.launch {
             val result = skillRepository.rescanImportedSkills()
+            refreshPendingUnlockConsents()
             val status = if (result == null) {
                 "No imported skills directory selected yet."
             } else {
@@ -342,11 +391,18 @@ class SettingsViewModel @Inject constructor(
             if (result.duplicateCount > 0) {
                 append(", ${result.duplicateCount} duplicate")
             }
+            if (result.pendingConsentCount > 0) {
+                append(", ${result.pendingConsentCount} waiting for unlock consent")
+            }
             if (result.errors.isNotEmpty()) {
                 append(". Errors: ")
                 append(result.errors.joinToString("; "))
             }
         }
+    }
+
+    private suspend fun refreshPendingUnlockConsents() {
+        pendingUnlockConsentsState.value = skillRepository.listPendingPhoneControlUnlockConsents()
     }
 }
 
@@ -360,6 +416,7 @@ private fun SettingsDraftState.mergeSkillStateFrom(incoming: SettingsDraftState)
         skillRoots = incoming.skillRoots,
         trustProjectSkills = incoming.trustProjectSkills,
         skillDiagnostics = incoming.skillDiagnostics,
+        pendingPhoneControlUnlockConsents = incoming.pendingPhoneControlUnlockConsents,
         skillImportStatus = skillImportStatus
     )
 }

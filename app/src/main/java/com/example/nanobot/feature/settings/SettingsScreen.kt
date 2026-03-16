@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -32,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +74,8 @@ fun SettingsScreen(
     onRescanImportedSkills: () -> Unit,
     onRemoveSkillRoot: (String) -> Unit,
     onRemoveImportedSkill: (String) -> Unit,
+    onAcceptPendingPhoneControlUnlockConsent: (String) -> Unit,
+    onRejectPendingPhoneControlUnlockConsent: (String) -> Unit,
     onDraftMcpLabelChange: (String) -> Unit,
     onDraftMcpEndpointChange: (String) -> Unit,
     onDraftMcpAuthTypeChange: (McpAuthType) -> Unit,
@@ -121,6 +125,16 @@ fun SettingsScreen(
                 )
             }
             onSkillZipSelected(uri)
+        }
+    }
+    var selectedPendingConsent by remember { mutableStateOf<PendingPhoneControlUnlockConsentUiState?>(null) }
+    LaunchedEffect(state.pendingPhoneControlUnlockConsents) {
+        val currentPackageId = selectedPendingConsent?.packageId
+        selectedPendingConsent = when {
+            state.pendingPhoneControlUnlockConsents.isEmpty() -> null
+            currentPackageId == null -> state.pendingPhoneControlUnlockConsents.first()
+            else -> state.pendingPhoneControlUnlockConsents.firstOrNull { it.packageId == currentPackageId }
+                ?: state.pendingPhoneControlUnlockConsents.first()
         }
     }
 
@@ -652,6 +666,51 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+    selectedPendingConsent?.let { consent ->
+        AlertDialog(
+            onDismissRequest = { selectedPendingConsent = null },
+            title = { Text(consent.consentTitle) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Skill: ${consent.skillTitle}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Version: ${consent.consentVersion}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Unlock profiles: ${consent.unlockProfiles.joinToString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = consent.consentText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Signer: ${consent.signerKeyId} (${consent.signerAlgorithm})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { onAcceptPendingPhoneControlUnlockConsent(consent.packageId) }) {
+                    Text("I Agree")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onRejectPendingPhoneControlUnlockConsent(consent.packageId) }) {
+                    Text("Reject")
+                }
+            }
+        )
     }
 }
 

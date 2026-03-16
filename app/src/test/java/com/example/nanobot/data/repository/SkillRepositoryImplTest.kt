@@ -23,6 +23,7 @@ import com.example.nanobot.core.skills.PhoneControlUnlockProfileRegistry
 import com.example.nanobot.core.skills.PhoneControlUnlockSigning
 import com.example.nanobot.core.skills.PhoneControlUnlockStore
 import com.example.nanobot.core.skills.PhoneControlUnlockVerifier
+import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.skills.SkillResourceEntry
 import com.example.nanobot.core.skills.SkillResourceIndexer
 import com.example.nanobot.core.skills.SkillResourceType
@@ -325,29 +326,20 @@ class SkillRepositoryImplTest {
         val result = repository.importSkillsFromZip(archiveUri)
         val imported = repository.getSkillByName("phone-operator-basic")
         val receipt = repository.getPhoneControlUnlockReceipt("pkg.phone-operator-basic")
+        val pendingConsents = repository.listPendingPhoneControlUnlockConsents()
 
         assertEquals(1, result.importedCount)
         assertNotNull(imported)
         assertTrue(result.errors.any { it.contains("unlock verified", ignoreCase = true) })
-        assertNotNull(receipt)
-        assertEquals("phone-operator-basic", receipt.skillId)
+        assertEquals(null, receipt)
+        assertEquals(1, result.pendingConsentCount)
+        assertEquals("phone-operator-basic", pendingConsents.single().skillId)
         assertFalse(imported.resourceEntries.any { it.relativePath.endsWith("phone-control.unlock") })
-        assertEquals(
-            setOf(
-                "read_current_ui",
-                "tap_ui_node",
-                "input_text",
-                "scroll_ui",
-                "press_global_action",
-                "launch_app",
-                "wait_for_ui"
-            ),
-            repository.getHiddenToolEntitlements(imported)
-        )
+        assertEquals(emptySet(), repository.getHiddenToolEntitlements(imported))
     }
 
     @Test
-    fun importSkillsFromZipFallsBackToNormalSkillWhenUnlockVerificationFails() = runTest {
+    fun importSkillsFromZipAcceptsUnlockManifestWithoutHashOrSignatureChecks() = runTest {
         val archiveUri = createZipArchive(
             mapOf(
                 "phone-operator-basic/SKILL.md" to sampleSkillMarkdown(),
@@ -377,13 +369,64 @@ class SkillRepositoryImplTest {
         val result = repository.importSkillsFromZip(archiveUri)
         val imported = repository.getSkillByName("phone-operator-basic")
         val receipt = repository.getPhoneControlUnlockReceipt("pkg.phone-operator-basic")
+        val pendingConsents = repository.listPendingPhoneControlUnlockConsents()
 
         assertEquals(1, result.importedCount)
         assertNotNull(imported)
-        assertTrue(result.errors.any { it.contains("verification failed", ignoreCase = true) })
         assertEquals(null, receipt)
+        assertEquals(1, result.pendingConsentCount)
+        assertEquals("phone-operator-basic", pendingConsents.single().skillId)
         assertFalse(imported.resourceEntries.any { it.relativePath.endsWith("phone-control.unlock") })
         assertEquals(emptySet(), repository.getHiddenToolEntitlements(imported))
+    }
+
+    @Test
+    fun acceptPendingUnlockConsentStoresReceiptAndEnablesEntitlements() = runTest {
+        val archiveUri = createZipArchive(
+            mapOf(
+                "phone-operator-basic/SKILL.md" to sampleSkillMarkdown(),
+                "phone-operator-basic/phone-control.unlock" to signedUnlockManifest(
+                    skillId = "phone-operator-basic",
+                    skillPath = "phone-operator-basic/SKILL.md",
+                    skillSha256 = unlockVerifier().sha256(sampleSkillMarkdown())
+                )
+            )
+        )
+        val dao = FakeCustomSkillDao()
+        val settingsStore = FakeSettingsStore()
+        val activatedSkillStore = ActivatedSkillSessionStore()
+        val workspaceRepository = FakeWorkspaceRepository()
+        val repository = createRepository(
+            dao = dao,
+            scanner = SkillDirectoryScanner(
+                org.robolectric.RuntimeEnvironment.getApplication(),
+                SkillMarkdownParser(),
+                SkillResourceIndexer()
+            ),
+            settingsStore = settingsStore,
+            activatedSkillStore = activatedSkillStore,
+            workspaceRepository = workspaceRepository
+        )
+
+        repository.importSkillsFromZip(archiveUri)
+        val accepted = repository.acceptPendingPhoneControlUnlockConsent("pkg.phone-operator-basic")
+        val imported = repository.getSkillByName("phone-operator-basic")
+
+        assertNotNull(accepted)
+        assertNotNull(imported)
+        assertEquals(emptyList<PendingPhoneControlUnlockConsent>(), repository.listPendingPhoneControlUnlockConsents())
+        assertEquals(
+            setOf(
+                "read_current_ui",
+                "tap_ui_node",
+                "input_text",
+                "scroll_ui",
+                "press_global_action",
+                "launch_app",
+                "wait_for_ui"
+            ),
+            repository.getHiddenToolEntitlements(imported)
+        )
     }
 
     private fun scannedSkill(
