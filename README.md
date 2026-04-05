@@ -1,14 +1,15 @@
 <h1 align="center">Android Nanobot</h1>
 
 <p align="center">
+  <strong>A local AI agent that lives on your Android device.</strong>
+</p>
+
+<p align="center">
   <a href="https://github.com/zensu357/Android-nanobot/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/zensu357/Android-nanobot?style=flat-square" alt="License" />
   </a>
   <a href="https://github.com/zensu357/Android-nanobot/stargazers">
     <img src="https://img.shields.io/github/stars/zensu357/Android-nanobot?style=flat-square" alt="Stars" />
-  </a>
-  <a href="https://github.com/zensu357/Android-nanobot/network/members">
-    <img src="https://img.shields.io/github/forks/zensu357/Android-nanobot?style=flat-square" alt="Forks" />
   </a>
   <a href="https://github.com/zensu357/Android-nanobot/issues">
     <img src="https://img.shields.io/github/issues/zensu357/Android-nanobot?style=flat-square" alt="Issues" />
@@ -22,158 +23,287 @@
 </p>
 
 <p align="center">
-  <strong>Android-native recreation of the HKUDS nanobot agent</strong>
-  <br />
-  Focused on matching the local agent core on Android rather than wrapping a Python runtime.
-  <br />
-  <a href="./CURRENT_STATUS.md"><strong>Current Status</strong></a>
-  ·
-  <a href="./DEVELOPMENT_PROGRESS_AND_ROADMAP.md"><strong>Roadmap</strong></a>
-  ·
+  Android-native recreation of the <a href="https://github.com/HKUDS/nanobot">HKUDS nanobot</a> agent.<br/>
+  Focused on matching the local agent core on Android &mdash; not wrapping a Python runtime.
+</p>
+
+<p align="center">
   <a href="./README.zh-CN.md"><strong>中文文档</strong></a>
 </p>
+
+---
+
+## Highlights
+
+<table>
+<tr>
+<td width="50%">
+
+**Complete Agent Loop**
+
+Sense &rarr; Think &rarr; Act &rarr; Remember. A full orchestration cycle with tool-loop execution, context budgeting, and progressive memory disclosure.
+
+</td>
+<td width="50%">
+
+**Phone Control**
+
+Operate your device through an Accessibility Service &mdash; read the UI tree, tap, type, scroll, take screenshots, and more. All gated behind signed skill unlock verification.
+
+</td>
+</tr>
+<tr>
+<td>
+
+**Multi-Provider LLM**
+
+OpenAI, Azure OpenAI, OpenRouter &mdash; switch providers on the fly with a unified interface. Custom base URL supported.
+
+</td>
+<td>
+
+**Skill Platform**
+
+Discover, import (ZIP), parse (Markdown), and activate skills at runtime. Hidden phone-control skills require publisher-signed manifests and user consent.
+
+</td>
+</tr>
+<tr>
+<td>
+
+**Layered Memory**
+
+Session summaries, current-session facts, long-term user facts. Conflict-aware updates, ranked recall, realtime consolidation with periodic worker fallback.
+
+</td>
+<td>
+
+**Extensible Tools**
+
+15+ built-in tools, dynamic MCP tool discovery, workspace sandboxing, and a policy-enforced access control layer.
+
+</td>
+</tr>
+</table>
+
+---
 
 ## Table of Contents
 
 - [Getting Started](#getting-started)
-  - [Requirements](#requirements)
-  - [Build and Verification](#build-and-verification)
-- [Repository Structure](#repository-structure)
 - [Architecture](#architecture)
-- [Current Capabilities](#current-capabilities)
-- [Current Boundaries](#current-boundaries)
+- [Phone Control](#phone-control)
+- [Skills & Hidden Unlock](#skills--hidden-unlock)
+- [Tool Catalog](#tool-catalog)
 - [Tech Stack](#tech-stack)
 - [Contributing](#contributing)
-- [Versioning](#versioning)
 - [License](#license)
 - [Acknowledgements](#acknowledgements)
 
-## Getting Started
+---
 
-Android Nanobot is a single-module Android app that recreates the core local-agent behavior of Python `nanobot` on Android.
+## Getting Started
 
 ### Requirements
 
-- JDK 17
-- Android SDK 35
-- Gradle wrapper included in the repository
-- Android Studio recommended for local development
+| Dependency | Version |
+|------------|---------|
+| JDK | 17 |
+| Android SDK | 35 (min 26) |
+| Gradle | Wrapper included |
+| IDE | Android Studio recommended |
 
-### Build and Verification
-
-1. Clone the repository:
+### Build
 
 ```bash
 git clone https://github.com/zensu357/Android-nanobot.git
+cd Android-nanobot
 ```
-
-2. Run the standard verification commands from the repository root:
 
 ```bash
-./gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plain -Dorg.gradle.cache.internal.locklistener.port=0
+# Windows
+./gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plain
+
+# macOS / Linux
+./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --console=plain
 ```
 
-On macOS or Linux, use `./gradlew` instead of `./gradlew.bat`.
-
-## Repository Structure
-
-```text
-.
-├── app/
-├── gradle/
-├── scripts/
-├── CURRENT_STATUS.md
-├── CURRENT_STATUS.zh-CN.md
-├── DEVELOPMENT_PROGRESS_AND_ROADMAP.md
-├── DEVELOPMENT_PROGRESS_AND_ROADMAP.zh-CN.md
-├── LICENSE
-├── README.md
-├── README.zh-CN.md
-├── build.gradle.kts
-├── gradle.properties
-├── gradlew
-├── gradlew.bat
-└── settings.gradle.kts
-```
+---
 
 ## Architecture
 
-- Single-module Android application
-- `core/`: agent loop, providers, tools, MCP, workspace, web access, workers, persistence models
-- Memory architecture: realtime consolidation, session summaries, long-term facts, conflict-aware fact governance, and ranked lookup
-- `data/`: repository implementations and mappers
-- `domain/`: repository interfaces and use cases
-- `feature/`: Compose screens and ViewModels, including in-app memory management for facts and summaries
-- `navigation/`: app routes and navigation graph
+```
+app/src/main/java/com/example/nanobot/
+├── core/
+│   ├── ai/              # Agent loop, prompt composer, model router, tool-loop executor
+│   │   └── provider/    # OpenAI, Azure, OpenRouter adapters
+│   ├── memory/          # Fact governance, search scoring, consolidation
+│   ├── phonecontrol/    # Accessibility service, UI snapshot, device actions
+│   ├── skills/          # Skill discovery, parser, ZIP importer, unlock verification
+│   ├── tools/           # Tool interface, registry, access policy
+│   │   └── impl/        # 15+ built-in tool implementations
+│   ├── mcp/             # MCP client, registry, tool adapter
+│   ├── web/             # Web fetch, search, DNS safety, request guard
+│   ├── worker/          # Heartbeat, memory consolidation, reminder, session cleanup
+│   ├── database/        # Room DAOs & entities
+│   └── ...
+├── data/                # Repository implementations & mappers
+├── domain/              # Repository interfaces & use cases
+├── feature/             # Compose UI screens & ViewModels
+│   ├── chat/            # Main chat interface
+│   ├── memory/          # Memory management UI
+│   ├── settings/        # Settings & unlock consent UI
+│   ├── sessions/        # Session management
+│   ├── tools/           # Tool management
+│   └── onboarding/      # First-run guide
+├── di/                  # Hilt modules
+├── navigation/          # App routes
+└── ui/                  # Theme & shared components
+```
 
-## Current Capabilities
+**Key design choices:**
+- **Single module** &mdash; keeps the build simple for an app-scoped project.
+- **Clean Architecture** &mdash; `domain/` defines contracts, `data/` implements them, `feature/` consumes them.
+- **Coroutines everywhere** &mdash; all I/O and agent turns are suspend functions.
+- **Hilt DI** &mdash; every service, tool, and repository is injectable.
 
-- Persistent chat sessions with Room-backed history
-- Prompt presets, runtime metadata, and memory-aware prompting
-- Realtime memory refresh after completed turns, with periodic worker fallback
-- Layered memory recall across session summaries, current-session facts, and long-term user facts
-- Conflict-aware memory fact updates, ranked memory lookup, and in-app memory editing / deletion / summary rebuild UI
-- Policy-enforced `workspace-restricted mode`
-- Workspace sandbox read/write tools inside `workspace:/`
-- Public web read-only tools with network safety checks
-- Local orchestration through `delegate_task`
-- Dynamic MCP tools with cached discovery and partial-refresh retention
-- Background heartbeat and reminder automation
-- Image and file attachments stored in app-private storage and delivered through the Android attachment pipeline, with image support on compatible multimodal provider routes and file contents inlined as text when needed
+---
 
-## Current Boundaries
+## Phone Control
 
-- Image attachment support depends on the selected provider route; some detected provider specs still disable image attachments
-- Non-image file attachments are currently expanded into text content rather than sent through native provider-side file upload APIs
-- MCP is remote HTTP-oriented only; there is no local stdio server runtime or marketplace flow
-- Channels / bridge / CLI ecosystem layers are not implemented in this Android project
+The phone control module lets the agent interact with the device UI through Android's Accessibility Service.
+
+### Capabilities
+
+| Tool | Description | Status |
+|------|-------------|--------|
+| `read_current_ui` | Read the foreground UI tree as structured nodes | Implemented |
+| `tap_ui_node` | Tap a node by ID, text, class, view ID (exact / contains / regex) | Implemented |
+| `input_text` | Set text on an editable field via `ACTION_SET_TEXT` | Implemented |
+| `scroll_ui` | Scroll a container forward / backward; auto-finds scrollable nodes | Implemented |
+| `press_global_action` | Back, Home, Recents, Notifications, Quick Settings, Screenshot, Lock, Power | Implemented |
+| `launch_app` | Launch any installed app by package name | Implemented |
+| `wait_for_ui` | Poll until a text / content-description appears (substring, case-insensitive) | Implemented |
+| `perform_ui_action` | Long-click, focus, copy, paste, cut, select, and more | Implemented |
+| `take_screenshot` | Capture screen as base64 JPEG for multimodal analysis (API 30+) | Implemented |
+
+### Node Selector
+
+All node-targeting tools share a unified selector with 6 fields and 3 match modes:
+
+```
+nodeId | text | contentDescription | className | viewIdResourceName
+matchMode: exact (default) | contains | regex
+```
+
+### Auto-Snapshot
+
+After every successful action (tap, input, scroll, wait, perform), the tool automatically appends a compact UI snapshot &mdash; eliminating the need for the agent to call `read_current_ui` after each step.
+
+### Security
+
+Phone control tools are **hidden by default**. They are only exposed when:
+
+1. A skill package includes a signed `phone-control.unlock` manifest
+2. The app verifies the manifest integrity
+3. The user explicitly accepts the consent dialog
+4. A local acceptance receipt is stored
+
+See [Skills & Hidden Unlock](#skills--hidden-unlock) for details.
+
+---
+
+## Skills & Hidden Unlock
+
+### Skill Lifecycle
+
+```
+ZIP Import  ──>  Directory Scan  ──>  Markdown Parse  ──>  Resource Index  ──>  Catalog
+                       │
+              phone-control.unlock?
+                       │
+              ┌────────┴────────┐
+              │  Verify & Gate  │
+              └────────┬────────┘
+                       │
+              User Consent Dialog
+                       │
+              Store Unlock Receipt
+```
+
+### Key Design Rules
+
+- **`SKILL.md` explains behavior** &mdash; the agent reads this as its instruction manual.
+- **`phone-control.unlock` grants entitlement** &mdash; a signed sidecar that the agent never sees.
+- **Local acceptance records user consent** &mdash; the app stores evidence of agreement.
+- **Profile-based mapping** &mdash; unlock files reference profile IDs (e.g. `phone_control_basic_v1`), not raw tool names. The host controls what each profile unlocks.
+
+See [`PHONE_CONTROL_UNLOCK_SKILL_DESIGN.md`](./PHONE_CONTROL_UNLOCK_SKILL_DESIGN.md) for the full specification.
+
+---
+
+## Tool Catalog
+
+### Built-in Tools
+
+| Category | Tools |
+|----------|-------|
+| **Workspace** | `list_workspace`, `read_file`, `write_file`, `replace_in_file`, `search_workspace` |
+| **Web** | `web_fetch`, `web_search` |
+| **Memory** | `memory_lookup` |
+| **Orchestration** | `delegate_task`, `activate_skill`, `read_skill_resource` |
+| **Notification** | `notify_user`, `schedule_reminder` |
+| **Device** | `device_time`, `session_snapshot` |
+| **Phone Control** | `read_current_ui`, `tap_ui_node`, `input_text`, `scroll_ui`, `press_global_action`, `launch_app`, `wait_for_ui`, `perform_ui_action`, `take_screenshot` |
+
+### Dynamic MCP Tools
+
+The app discovers and caches tools from remote MCP servers. MCP tools appear alongside built-in tools and follow the same access policy.
+
+### Access Policy
+
+| Mode | Allowed |
+|------|---------|
+| **Unrestricted** | All registered tools |
+| **Workspace-restricted** | Local read-only, local orchestration, workspace read/write only |
+
+Hidden tools (`HIDDEN_UNLOCKABLE`) require an active unlock receipt in `AgentRunContext.unlockedToolNames` to become visible.
+
+---
 
 ## Tech Stack
 
-- Kotlin 2.0.21
-- Jetpack Compose + Material 3
-- Room
-- DataStore
-- Hilt
-- WorkManager
-- Retrofit / OkHttp
-- kotlinx.serialization
+| Layer | Technology |
+|-------|------------|
+| Language | Kotlin 2.0.21 |
+| UI | Jetpack Compose + Material 3 |
+| DI | Hilt (Dagger) |
+| Database | Room |
+| Preferences | DataStore |
+| Networking | Retrofit + OkHttp |
+| Serialization | kotlinx.serialization + SnakeYAML |
+| Background | WorkManager |
+| Target | SDK 35 &mdash; Min SDK 26 |
+
+---
 
 ## Contributing
 
-Contributions are welcome.
-
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push the branch to your fork
-5. Open a pull request
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Run the verification command above
+4. Commit and push
+5. Open a Pull Request
 
-Before submitting changes, run the local verification command shown above.
-
-## Versioning
-
-This project uses Git for version control. The primary development branch is `main`.
+---
 
 ## License
 
-This project is licensed under the Apache License 2.0. See `LICENSE` for details.
+Apache License 2.0 &mdash; see [`LICENSE`](./LICENSE).
+
+---
 
 ## Acknowledgements
 
-- [`nanobot`](https://github.com/HKUDS/nanobot) by HKUDS, as the reference design target
-- Android Jetpack and Jetpack Compose
-- Room, WorkManager, Hilt, OkHttp, and kotlinx.serialization
-
-[license-shield]: https://img.shields.io/github/license/zensu357/Android-nanobot?style=flat-square
-[license-url]: https://github.com/zensu357/Android-nanobot/blob/main/LICENSE
-[stars-shield]: https://img.shields.io/github/stars/zensu357/Android-nanobot?style=flat-square
-[stars-url]: https://github.com/zensu357/Android-nanobot/stargazers
-[forks-shield]: https://img.shields.io/github/forks/zensu357/Android-nanobot?style=flat-square
-[forks-url]: https://github.com/zensu357/Android-nanobot/network/members
-[issues-shield]: https://img.shields.io/github/issues/zensu357/Android-nanobot?style=flat-square
-[issues-url]: https://github.com/zensu357/Android-nanobot/issues
-[kotlin-shield]: https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=flat-square&logo=kotlin&logoColor=white
-[kotlin-url]: https://kotlinlang.org/
-[android-shield]: https://img.shields.io/badge/Android-SDK%2035-3DDC84?style=flat-square&logo=android&logoColor=white
-[android-url]: https://developer.android.com/
+- [`nanobot`](https://github.com/HKUDS/nanobot) by HKUDS &mdash; the reference design target
+- Android Jetpack, Jetpack Compose, Room, WorkManager, Hilt, OkHttp, kotlinx.serialization
