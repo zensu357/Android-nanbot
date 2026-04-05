@@ -49,6 +49,55 @@ open class PhoneControlService @Inject constructor(
         return service.tapNode(selector)
     }
 
+    open fun inputText(selector: PhoneUiNodeSelector, text: String): PhoneControlActionResult {
+        val service = PhoneControlAccessibilityService.getInstance()
+            ?: return PhoneControlActionResult(
+                success = false,
+                message = "Phone-control accessibility service is not enabled. Enable the Nanobot accessibility service in Android accessibility settings first."
+            )
+        return service.inputText(selector, text)
+    }
+
+    open fun scrollNode(selector: PhoneUiNodeSelector?, direction: ScrollDirection): PhoneControlActionResult {
+        val service = PhoneControlAccessibilityService.getInstance()
+            ?: return PhoneControlActionResult(
+                success = false,
+                message = "Phone-control accessibility service is not enabled. Enable the Nanobot accessibility service in Android accessibility settings first."
+            )
+        return service.scrollNode(selector, direction)
+    }
+
+    open suspend fun waitForCondition(
+        text: String?,
+        contentDescription: String?,
+        timeoutMs: Long
+    ): PhoneControlActionResult {
+        val service = PhoneControlAccessibilityService.getInstance()
+            ?: return PhoneControlActionResult(
+                success = false,
+                message = "Phone-control accessibility service is not enabled. Enable the Nanobot accessibility service in Android accessibility settings first."
+            )
+        return service.waitForCondition(text, contentDescription, timeoutMs)
+    }
+
+    open fun performNodeAction(selector: PhoneUiNodeSelector, action: NodeAction): PhoneControlActionResult {
+        val service = PhoneControlAccessibilityService.getInstance()
+            ?: return PhoneControlActionResult(
+                success = false,
+                message = "Phone-control accessibility service is not enabled. Enable the Nanobot accessibility service in Android accessibility settings first."
+            )
+        return service.performNodeAction(selector, action)
+    }
+
+    open suspend fun takeScreenshot(quality: Int, maxWidth: Int): ScreenshotResult {
+        val service = PhoneControlAccessibilityService.getInstance()
+            ?: return ScreenshotResult(
+                success = false,
+                message = "Phone-control accessibility service is not enabled. Enable the Nanobot accessibility service in Android accessibility settings first."
+            )
+        return service.takeScreenshotBase64(quality, maxWidth)
+    }
+
     open fun launchApp(packageName: String): Boolean {
         val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

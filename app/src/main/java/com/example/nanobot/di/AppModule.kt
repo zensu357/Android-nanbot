@@ -54,6 +54,7 @@ import com.example.nanobot.core.tools.impl.MemoryLookupTool
 import com.example.nanobot.core.tools.impl.NotifyUserTool
 import com.example.nanobot.core.tools.impl.InputTextTool
 import com.example.nanobot.core.tools.impl.LaunchAppTool
+import com.example.nanobot.core.tools.impl.PerformUiActionTool
 import com.example.nanobot.core.tools.impl.PressGlobalActionTool
 import com.example.nanobot.core.tools.impl.ReadFileTool
 import com.example.nanobot.core.tools.impl.ReadCurrentUiTool
@@ -63,6 +64,7 @@ import com.example.nanobot.core.tools.impl.ScheduleReminderTool
 import com.example.nanobot.core.tools.impl.ScrollUiTool
 import com.example.nanobot.core.tools.impl.SearchWorkspaceTool
 import com.example.nanobot.core.tools.impl.SessionSnapshotTool
+import com.example.nanobot.core.tools.impl.TakeScreenshotTool
 import com.example.nanobot.core.tools.impl.TapUiNodeTool
 import com.example.nanobot.core.tools.impl.WaitForUiTool
 import com.example.nanobot.core.tools.impl.WebFetchTool
@@ -236,7 +238,9 @@ object AppModule {
         scrollUiTool: ScrollUiTool,
         pressGlobalActionTool: PressGlobalActionTool,
         launchAppTool: LaunchAppTool,
-        waitForUiTool: WaitForUiTool
+        waitForUiTool: WaitForUiTool,
+        performUiActionTool: PerformUiActionTool,
+        takeScreenshotTool: TakeScreenshotTool
     ): ToolRegistry {
         return ToolRegistry(validator, accessPolicy, mcpRegistry).apply {
             register(notifyUserTool)
@@ -261,6 +265,8 @@ object AppModule {
             register(pressGlobalActionTool)
             register(launchAppTool)
             register(waitForUiTool)
+            register(performUiActionTool)
+            register(takeScreenshotTool)
         }
     }
 }

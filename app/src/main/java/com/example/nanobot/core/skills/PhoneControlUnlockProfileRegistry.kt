@@ -22,7 +22,9 @@ class PhoneControlUnlockProfileRegistry @Inject constructor() {
                 "scroll_ui",
                 "press_global_action",
                 "launch_app",
-                "wait_for_ui"
+                "wait_for_ui",
+                "perform_ui_action",
+                "take_screenshot"
             )
         )
     }
