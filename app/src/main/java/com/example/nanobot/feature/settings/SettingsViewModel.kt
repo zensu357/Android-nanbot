@@ -1,5 +1,6 @@
 package com.example.nanobot.feature.settings
 
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,7 @@ import com.example.nanobot.core.preferences.SettingsConfigStore
 import com.example.nanobot.core.worker.WorkerSchedulingController
 import com.example.nanobot.domain.repository.HeartbeatRepository
 import com.example.nanobot.domain.repository.SkillRepository
+import com.example.nanobot.domain.repository.SystemAccessRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
@@ -26,18 +28,32 @@ class SettingsViewModel @Inject constructor(
     private val skillRepository: SkillRepository,
     private val mcpRegistry: McpRegistry,
     private val heartbeatRepository: HeartbeatRepository,
+    private val systemAccessRepository: SystemAccessRepository,
     private val nanobotWorkerScheduler: WorkerSchedulingController
 ) : ViewModel() {
     private val uiStateInternal = MutableStateFlow(
         SettingsUiState(availablePresets = promptPresetCatalog.presets.map { it.id })
     )
     private val pendingUnlockConsentsState = MutableStateFlow(emptyList<com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent>())
+    private val systemAccessState = MutableStateFlow(SystemAccessUiState())
 
     val uiState: StateFlow<SettingsUiState> = uiStateInternal.asStateFlow()
 
     init {
         viewModelScope.launch {
             refreshPendingUnlockConsents()
+            refreshSystemAccessState()
+        }
+        viewModelScope.launch {
+            systemAccessRepository.observeSystemAccessState().collect { access ->
+                systemAccessState.value = SystemAccessUiState(
+                    notificationPermissionRequired = access.notificationPermissionRequired,
+                    notificationPermissionGranted = access.notificationPermissionGranted,
+                    notificationsEnabled = access.notificationsEnabled,
+                    accessibilityEnabled = access.accessibilityEnabled
+                )
+                updateUiState { current -> current.copy(systemAccess = systemAccessState.value) }
+            }
         }
         viewModelScope.launch {
             combine(
@@ -323,6 +339,16 @@ class SettingsViewModel @Inject constructor(
 
     fun onSystemPromptChanged(value: String) = updateDraft { copy(systemPrompt = value) }
 
+    fun refreshSystemAccessState() {
+        viewModelScope.launch {
+            systemAccessRepository.refresh()
+        }
+    }
+
+    fun buildOpenNotificationSettingsIntent(): Intent = systemAccessRepository.buildOpenNotificationSettingsIntent()
+
+    fun buildOpenAccessibilitySettingsIntent(): Intent = systemAccessRepository.buildOpenAccessibilitySettingsIntent()
+
     fun saveSettings() {
         viewModelScope.launch {
             updateUiState { current -> current.copy(isSaving = true) }
@@ -375,6 +401,7 @@ class SettingsViewModel @Inject constructor(
             val draftSnapshot = updatedDraft.toPersistedSnapshot()
             current.copy(
                 draft = updatedDraft,
+                systemAccess = current.systemAccess,
                 isDirty = baselineSnapshot == null || draftSnapshot != baselineSnapshot,
                 mcpStatus = status
             )

@@ -196,9 +196,9 @@ class PhoneControlAccessibilityService : AccessibilityService() {
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    suspend fun takeScreenshotBase64(quality: Int, maxWidth: Int): ScreenshotResult {
+    suspend fun takeScreenshotBase64(quality: Int, maxWidth: Int): com.example.nanobot.core.phonecontrol.ScreenshotResult {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return ScreenshotResult(
+            return com.example.nanobot.core.phonecontrol.ScreenshotResult(
                 success = false,
                 message = "Screenshot requires Android 11 (API 30) or higher. Current: API ${Build.VERSION.SDK_INT}."
             )
@@ -216,7 +216,7 @@ class PhoneControlAccessibilityService : AccessibilityService() {
                         screenshot.hardwareBuffer.close()
                         if (bitmap == null) {
                             continuation.resume(
-                                ScreenshotResult(false, "Failed to decode screenshot hardware buffer.")
+                                com.example.nanobot.core.phonecontrol.ScreenshotResult(false, "Failed to decode screenshot hardware buffer.")
                             )
                             return
                         }
@@ -234,7 +234,7 @@ class PhoneControlAccessibilityService : AccessibilityService() {
                         scaled.recycle()
                         val base64 = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
                         continuation.resume(
-                            ScreenshotResult(
+                            com.example.nanobot.core.phonecontrol.ScreenshotResult(
                                 success = true,
                                 message = "Screenshot captured (${stream.size()} bytes, JPEG q=$quality).",
                                 base64Jpeg = base64
@@ -244,7 +244,7 @@ class PhoneControlAccessibilityService : AccessibilityService() {
 
                     override fun onFailure(errorCode: Int) {
                         continuation.resume(
-                            ScreenshotResult(false, "Screenshot failed with error code $errorCode.")
+                            com.example.nanobot.core.phonecontrol.ScreenshotResult(false, "Screenshot failed with error code $errorCode.")
                         )
                     }
                 }

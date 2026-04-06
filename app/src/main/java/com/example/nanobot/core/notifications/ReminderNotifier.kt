@@ -16,20 +16,24 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 interface ReminderNotificationSink {
-    fun notify(reminder: Reminder)
+    fun notify(reminder: Reminder): Boolean
 }
 
 @Singleton
 class ReminderNotifier @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ReminderNotificationSink {
-    override fun notify(reminder: Reminder) {
+    override fun notify(reminder: Reminder): Boolean {
         ensureChannel()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            throw IllegalStateException("POST_NOTIFICATIONS permission is not granted.")
+            return false
+        }
+
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            return false
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -41,6 +45,7 @@ class ReminderNotifier @Inject constructor(
             .build()
 
         NotificationManagerCompat.from(context).notify(reminder.id.hashCode(), notification)
+        return true
     }
 
     private fun ensureChannel() {

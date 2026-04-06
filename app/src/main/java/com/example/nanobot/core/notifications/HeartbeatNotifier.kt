@@ -15,37 +15,41 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 interface HeartbeatNotificationSink {
-    fun notifyExecuted(summary: String)
-    fun notifyFailed(summary: String)
+    fun notifyExecuted(summary: String): Boolean
+    fun notifyFailed(summary: String): Boolean
 }
 
 @Singleton
 class HeartbeatNotifier @Inject constructor(
     @ApplicationContext private val context: Context
 ) : HeartbeatNotificationSink {
-    override fun notifyExecuted(summary: String) {
-        notify(
+    override fun notifyExecuted(summary: String): Boolean {
+        return notify(
             notificationId = HEARTBEAT_EXECUTED_ID,
             title = context.getString(R.string.heartbeat_executed_title),
             message = summary.ifBlank { context.getString(R.string.heartbeat_executed_fallback) }
         )
     }
 
-    override fun notifyFailed(summary: String) {
-        notify(
+    override fun notifyFailed(summary: String): Boolean {
+        return notify(
             notificationId = HEARTBEAT_FAILED_ID,
             title = context.getString(R.string.heartbeat_failed_title),
             message = summary.ifBlank { context.getString(R.string.heartbeat_failed_fallback) }
         )
     }
 
-    private fun notify(notificationId: Int, title: String, message: String) {
+    private fun notify(notificationId: Int, title: String, message: String): Boolean {
         ensureChannel()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            return
+            return false
+        }
+
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            return false
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -58,6 +62,7 @@ class HeartbeatNotifier @Inject constructor(
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)
+        return true
     }
 
     private fun ensureChannel() {

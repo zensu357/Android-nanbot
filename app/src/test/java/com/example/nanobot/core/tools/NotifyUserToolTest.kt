@@ -47,13 +47,14 @@ class NotifyUserToolTest {
     private class RecordingReminderNotificationSink : ReminderNotificationSink {
         var lastReminder: Reminder? = null
 
-        override fun notify(reminder: Reminder) {
+        override fun notify(reminder: Reminder): Boolean {
             lastReminder = reminder
+            return true
         }
     }
 
     private class FailingReminderNotificationSink : ReminderNotificationSink {
-        override fun notify(reminder: Reminder) {
+        override fun notify(reminder: Reminder): Boolean {
             error("notifications disabled")
         }
     }

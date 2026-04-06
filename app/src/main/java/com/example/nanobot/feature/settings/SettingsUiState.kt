@@ -76,6 +76,13 @@ data class McpServerUiState(
     val consecutiveFailures: Int = 0
 )
 
+data class SystemAccessUiState(
+    val notificationPermissionRequired: Boolean = false,
+    val notificationPermissionGranted: Boolean = true,
+    val notificationsEnabled: Boolean = true,
+    val accessibilityEnabled: Boolean = false
+)
+
 data class SettingsDraftState(
     val providerType: String = ProviderType.OPENAI_COMPATIBLE.wireValue,
     val apiKey: String = "",
@@ -142,6 +149,7 @@ data class SettingsUiState(
     val draft: SettingsDraftState = SettingsDraftState(),
     val baseline: SettingsBaselineState? = null,
     val availablePresets: List<String> = emptyList(),
+    val systemAccess: SystemAccessUiState = SystemAccessUiState(),
     val mcpStatus: String? = null,
     val isDirty: Boolean = false,
     val isSaving: Boolean = false

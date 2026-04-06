@@ -41,6 +41,7 @@ import com.example.nanobot.domain.repository.ChatRepository
 import com.example.nanobot.domain.repository.HeartbeatRepository
 import com.example.nanobot.domain.repository.MemoryRepository
 import com.example.nanobot.domain.repository.ReminderRepository
+import com.example.nanobot.domain.repository.SystemAccessRepository
 import com.example.nanobot.domain.repository.WebAccessRepository
 import com.example.nanobot.domain.repository.WorkspaceRepository
 import com.example.nanobot.core.tools.ToolRegistry
@@ -76,6 +77,7 @@ import com.example.nanobot.data.repository.MemoryRepositoryImpl
 import com.example.nanobot.data.repository.ReminderRepositoryImpl
 import com.example.nanobot.data.repository.SessionRepositoryImpl
 import com.example.nanobot.data.repository.SkillRepositoryImpl
+import com.example.nanobot.data.repository.SystemAccessRepositoryImpl
 import com.example.nanobot.data.repository.WebAccessRepositoryImpl
 import com.example.nanobot.data.repository.WorkspaceRepositoryImpl
 import dagger.Module
@@ -178,6 +180,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideReminderRepository(impl: ReminderRepositoryImpl): ReminderRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideSystemAccessRepository(impl: SystemAccessRepositoryImpl): SystemAccessRepository = impl
 
     @Provides
     @Singleton

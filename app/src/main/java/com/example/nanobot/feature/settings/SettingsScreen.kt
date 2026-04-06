@@ -1,6 +1,8 @@
 package com.example.nanobot.feature.settings
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -33,17 +35,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.nanobot.core.mcp.McpAuthType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,6 +99,10 @@ fun SettingsScreen(
     onRemoveMcpServer: (String) -> Unit,
     onRefreshMcpTools: () -> Unit,
     onSystemPromptChange: (String) -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onRefreshSystemAccess: () -> Unit,
     onOpenMemory: () -> Unit,
     onOpenTools: () -> Unit,
     onResetClick: () -> Unit,
@@ -101,6 +111,23 @@ fun SettingsScreen(
 ) {
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val requestNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        onRefreshSystemAccess()
+    }
+    DisposableEffect(lifecycleOwner, onRefreshSystemAccess) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                onRefreshSystemAccess()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     val skillsDirectoryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -187,6 +214,45 @@ fun SettingsScreen(
                 ) {
                     Text("Telegram Group")
                 }
+            }
+
+            SettingsGroup(title = "Permissions & Access") {
+                AccessStatusCard(
+                    title = "Notification Permission",
+                    status = when {
+                        !state.systemAccess.notificationPermissionRequired -> "Not required on this Android version"
+                        state.systemAccess.notificationPermissionGranted -> "Granted"
+                        else -> "Not granted"
+                    },
+                    supportingText = if (state.systemAccess.notificationPermissionRequired) {
+                        "Required on Android 13+ before the app can post notifications."
+                    } else {
+                        "This Android version does not require the POST_NOTIFICATIONS runtime permission."
+                    },
+                    actionLabel = "Request notification permission",
+                    onActionClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            onRequestNotificationPermission()
+                        }
+                    },
+                    actionEnabled = state.systemAccess.notificationPermissionRequired && !state.systemAccess.notificationPermissionGranted
+                )
+                AccessStatusCard(
+                    title = "App Notifications",
+                    status = if (state.systemAccess.notificationsEnabled) "Enabled" else "Disabled in system settings",
+                    supportingText = "Controls whether reminder and heartbeat notifications can appear for this app.",
+                    actionLabel = "Open notification settings",
+                    onActionClick = onOpenNotificationSettings
+                )
+                AccessStatusCard(
+                    title = "Phone Control Accessibility",
+                    status = if (state.systemAccess.accessibilityEnabled) "Enabled" else "Not enabled",
+                    supportingText = "Required for phone control tools to inspect and interact with the device UI.",
+                    actionLabel = "Open accessibility settings",
+                    onActionClick = onOpenAccessibilitySettings
+                )
             }
 
             // LLM Provider Group
@@ -773,6 +839,47 @@ private fun SettingsGroup(
                 color = MaterialTheme.colorScheme.primary
             )
             content()
+        }
+    }
+}
+
+@Composable
+private fun AccessStatusCard(
+    title: String,
+    status: String,
+    supportingText: String,
+    actionLabel: String,
+    onActionClick: () -> Unit,
+    actionEnabled: Boolean = true
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedButton(
+                onClick = onActionClick,
+                enabled = actionEnabled
+            ) {
+                Text(actionLabel)
+            }
         }
     }
 }

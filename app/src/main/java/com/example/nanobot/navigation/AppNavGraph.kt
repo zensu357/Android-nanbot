@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import com.example.nanobot.feature.tools.ToolDebugViewModel
 fun AppNavGraph() {
     val appViewModel: AppNavGraphViewModel = hiltViewModel()
     val navController = rememberNavController()
+    val context = LocalContext.current
     val isCompleted by appViewModel.isOnboardingCompleted.collectAsStateWithLifecycle(initialValue = null)
 
     if (isCompleted == null) {
@@ -140,6 +142,14 @@ fun AppNavGraph() {
                 onRemoveMcpServer = viewModel::removeMcpServer,
                 onRefreshMcpTools = viewModel::refreshMcpTools,
                 onSystemPromptChange = viewModel::onSystemPromptChanged,
+                onRequestNotificationPermission = viewModel::refreshSystemAccessState,
+                onOpenNotificationSettings = {
+                    context.startActivity(viewModel.buildOpenNotificationSettingsIntent())
+                },
+                onOpenAccessibilitySettings = {
+                    context.startActivity(viewModel.buildOpenAccessibilitySettingsIntent())
+                },
+                onRefreshSystemAccess = viewModel::refreshSystemAccessState,
                 onOpenMemory = { navController.navigate(Destinations.Memory.route) },
                 onOpenTools = { navController.navigate(Destinations.Tools.route) },
                 onResetClick = viewModel::resetDraft,

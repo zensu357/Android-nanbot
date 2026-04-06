@@ -143,11 +143,12 @@ class ReminderWorkerTest {
     ) : ReminderNotificationSink {
         val notifiedIds = mutableListOf<String>()
 
-        override fun notify(reminder: Reminder) {
+        override fun notify(reminder: Reminder): Boolean {
             notifiedIds += reminder.id
             if (reminder.id in failIds) {
                 throw IllegalStateException("notification failed")
             }
+            return true
         }
     }
 }

@@ -159,12 +159,14 @@ class HeartbeatWorkerTest {
         var executedSummary: String? = null
         var failedSummary: String? = null
 
-        override fun notifyExecuted(summary: String) {
+        override fun notifyExecuted(summary: String): Boolean {
             executedSummary = summary
+            return true
         }
 
-        override fun notifyFailed(summary: String) {
+        override fun notifyFailed(summary: String): Boolean {
             failedSummary = summary
+            return true
         }
     }
 
