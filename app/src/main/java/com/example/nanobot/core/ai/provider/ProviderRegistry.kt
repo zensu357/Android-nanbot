@@ -1,5 +1,6 @@
 package com.example.nanobot.core.ai.provider
 
+import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.ProviderType
 
 data class ProviderSpec(
@@ -206,6 +207,18 @@ object ProviderRegistry {
         return metadataProviders.firstOrNull { spec ->
             spec.detectByBaseKeyword != null && normalizedBase.contains(spec.detectByBaseKeyword)
         }
+    }
+
+    fun resolve(
+        config: AgentConfig
+    ): ResolvedProviderRoute {
+        return resolve(
+            providerType = config.providerType,
+            apiKey = config.apiKey,
+            baseUrl = config.baseUrl,
+            model = config.model,
+            temperature = config.temperature
+        )
     }
 
     fun resolve(

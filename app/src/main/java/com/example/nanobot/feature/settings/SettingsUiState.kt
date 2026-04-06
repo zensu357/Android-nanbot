@@ -11,6 +11,7 @@ import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.model.ProviderType
 import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillDefinition
+import com.example.nanobot.core.model.VoiceEngineType
 
 data class SkillOptionUiState(
     val id: String,
@@ -94,6 +95,7 @@ data class SettingsDraftState(
     val reasoningEffort: String = "",
     val enableTools: Boolean = true,
     val enableMemory: Boolean = true,
+    val enableVisualMemory: Boolean = false,
     val enableBackgroundWork: Boolean = true,
     val heartbeatEnabled: Boolean = true,
     val heartbeatInstructions: String = "",
@@ -121,7 +123,12 @@ data class SettingsDraftState(
     val draftMcpCallTimeoutSeconds: String = "90",
     val draftMcpMaxRetries: String = "2",
     val draftMcpBackoffBaseMs: String = "500",
-    val systemPrompt: String = ""
+    val systemPrompt: String = "",
+    val voiceInputEnabled: Boolean = false,
+    val voiceAutoPlay: Boolean = false,
+    val voiceEngine: VoiceEngineType = VoiceEngineType.ANDROID,
+    val ttsSpeed: String = "1.0",
+    val ttsLanguage: String = "zh-CN"
 )
 
 data class SettingsBaselineState(
@@ -164,6 +171,7 @@ data class SettingsUiState(
     val reasoningEffort: String get() = draft.reasoningEffort
     val enableTools: Boolean get() = draft.enableTools
     val enableMemory: Boolean get() = draft.enableMemory
+    val enableVisualMemory: Boolean get() = draft.enableVisualMemory
     val enableBackgroundWork: Boolean get() = draft.enableBackgroundWork
     val heartbeatEnabled: Boolean get() = draft.heartbeatEnabled
     val heartbeatInstructions: String get() = draft.heartbeatInstructions
@@ -192,6 +200,11 @@ data class SettingsUiState(
     val draftMcpMaxRetries: String get() = draft.draftMcpMaxRetries
     val draftMcpBackoffBaseMs: String get() = draft.draftMcpBackoffBaseMs
     val systemPrompt: String get() = draft.systemPrompt
+    val voiceInputEnabled: Boolean get() = draft.voiceInputEnabled
+    val voiceAutoPlay: Boolean get() = draft.voiceAutoPlay
+    val voiceEngine: VoiceEngineType get() = draft.voiceEngine
+    val ttsSpeed: String get() = draft.ttsSpeed
+    val ttsLanguage: String get() = draft.ttsLanguage
 }
 
 fun SettingsBaselineState.toDraftState(): SettingsDraftState {
@@ -206,6 +219,7 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
         reasoningEffort = config.reasoningEffort.orEmpty(),
         enableTools = config.enableTools,
         enableMemory = config.enableMemory,
+        enableVisualMemory = config.enableVisualMemory,
         enableBackgroundWork = config.enableBackgroundWork,
         heartbeatEnabled = heartbeatEnabled,
         heartbeatInstructions = heartbeatInstructions,
@@ -281,7 +295,12 @@ fun SettingsBaselineState.toDraftState(): SettingsDraftState {
         draftMcpCallTimeoutSeconds = "90",
         draftMcpMaxRetries = "2",
         draftMcpBackoffBaseMs = "500",
-        systemPrompt = config.systemPrompt
+        systemPrompt = config.systemPrompt,
+        voiceInputEnabled = config.voiceInputEnabled,
+        voiceAutoPlay = config.voiceAutoPlay,
+        voiceEngine = config.voiceEngine,
+        ttsSpeed = config.ttsSpeed.toString(),
+        ttsLanguage = config.ttsLanguage
     )
 }
 
@@ -340,13 +359,19 @@ fun SettingsDraftState.toAgentConfig(): AgentConfig {
         reasoningEffort = reasoningEffort.ifBlank { null },
         enableTools = enableTools,
         enableMemory = enableMemory,
+        enableVisualMemory = enableVisualMemory,
         enableBackgroundWork = enableBackgroundWork,
         webSearchApiKey = webSearchApiKey,
         webProxy = webProxy,
         restrictToWorkspace = restrictToWorkspace,
         presetId = presetId,
         enabledSkillIds = skillOptions.filter { it.checked }.map { it.id },
-        systemPrompt = systemPrompt
+        systemPrompt = systemPrompt,
+        voiceInputEnabled = voiceInputEnabled,
+        voiceAutoPlay = voiceAutoPlay,
+        voiceEngine = voiceEngine,
+        ttsSpeed = ttsSpeed.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1.0f,
+        ttsLanguage = ttsLanguage.ifBlank { "zh-CN" }
     )
 }
 

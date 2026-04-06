@@ -3,6 +3,7 @@ package com.example.nanobot.feature.tools
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nanobot.core.ai.PromptDiagnosticsStore
+import com.example.nanobot.core.ai.provider.ProviderRegistry
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
 import com.example.nanobot.core.preferences.SettingsDataStore
@@ -37,10 +38,11 @@ class ToolDebugViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.configFlow.collect { config ->
                 debugConfig = config
+                val runContext = debugRunContext(config)
                 val previous = _uiState.value
                 val visibleTools = toolRegistry.visibleTools(
                     config,
-                    AgentRunContext.root("tool-debug", config.maxSubagentDepth)
+                    runContext
                 )
                 _uiState.value = previous.copy(
                     tools = visibleTools.map { tool ->
@@ -85,7 +87,7 @@ class ToolDebugViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isRunning = true, errorMessage = null)
             runCatching {
                 val arguments = json.parseToJsonElement(tool.sampleArguments).jsonObject
-                toolRegistry.execute(toolName, arguments, debugConfig, AgentRunContext.root("tool-debug", debugConfig.maxSubagentDepth))
+                toolRegistry.execute(toolName, arguments, debugConfig, debugRunContext(debugConfig))
             }.onSuccess { result ->
                 _uiState.value = _uiState.value.copy(
                     isRunning = false,
@@ -176,5 +178,14 @@ class ToolDebugViewModel @Inject constructor(
             else -> buildJsonObject { }
         }
         return json.encodeToString(JsonObject.serializer(), sample)
+    }
+
+    private fun debugRunContext(config: AgentConfig): AgentRunContext {
+        val route = ProviderRegistry.resolve(config)
+        return AgentRunContext.root(
+            sessionId = "tool-debug",
+            maxSubagentDepth = config.maxSubagentDepth,
+            supportsVision = route.supportsImageAttachments
+        )
     }
 }

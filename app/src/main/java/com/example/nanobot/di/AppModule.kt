@@ -33,6 +33,20 @@ import com.example.nanobot.core.web.SafeDns
 import com.example.nanobot.core.web.WebAccessConfigProvider
 import com.example.nanobot.core.web.WebAccessConfigProviderImpl
 import com.example.nanobot.core.web.WebSearchEndpointProvider
+import com.example.nanobot.core.voice.AndroidAudioRecorder
+import com.example.nanobot.core.voice.DefaultVoiceEngine
+import com.example.nanobot.core.voice.AndroidVoiceRecognizer
+import com.example.nanobot.core.voice.AndroidVoiceSynthesizer
+import com.example.nanobot.core.voice.AndroidSpeechRecognizer
+import com.example.nanobot.core.voice.AndroidSpeechSynthesizer
+import com.example.nanobot.core.voice.AudioRecorder
+import com.example.nanobot.core.voice.AudioTranscriber
+import com.example.nanobot.core.voice.OpenAiCompatibleAudioTranscriber
+import com.example.nanobot.core.voice.SpeechRecognizer
+import com.example.nanobot.core.voice.SpeechSynthesizer
+import com.example.nanobot.core.voice.VoiceEngine
+import com.example.nanobot.core.voice.WhisperSpeechRecognizer
+import com.example.nanobot.core.voice.WhisperVoiceRecognizer
 import com.example.nanobot.core.worker.WorkerSchedulingController
 import com.example.nanobot.core.worker.ReminderWorkScheduler
 import com.example.nanobot.domain.repository.SkillRepository
@@ -67,6 +81,8 @@ import com.example.nanobot.core.tools.impl.SearchWorkspaceTool
 import com.example.nanobot.core.tools.impl.SessionSnapshotTool
 import com.example.nanobot.core.tools.impl.TakeScreenshotTool
 import com.example.nanobot.core.tools.impl.TapUiNodeTool
+import com.example.nanobot.core.tools.impl.AnalyzeScreenshotTool
+import com.example.nanobot.core.tools.impl.VisualVerifyTool
 import com.example.nanobot.core.tools.impl.WaitForUiTool
 import com.example.nanobot.core.tools.impl.WebFetchTool
 import com.example.nanobot.core.tools.impl.WebSearchTool
@@ -219,6 +235,33 @@ object AppModule {
 
     @Provides
     @Singleton
+    @AndroidVoiceRecognizer
+    fun provideAndroidSpeechRecognizer(impl: AndroidSpeechRecognizer): SpeechRecognizer = impl
+
+    @Provides
+    @Singleton
+    @WhisperVoiceRecognizer
+    fun provideWhisperSpeechRecognizer(impl: WhisperSpeechRecognizer): SpeechRecognizer = impl
+
+    @Provides
+    @Singleton
+    @AndroidVoiceSynthesizer
+    fun provideAndroidSpeechSynthesizer(impl: AndroidSpeechSynthesizer): SpeechSynthesizer = impl
+
+    @Provides
+    @Singleton
+    fun provideAudioRecorder(impl: AndroidAudioRecorder): AudioRecorder = impl
+
+    @Provides
+    @Singleton
+    fun provideAudioTranscriber(impl: OpenAiCompatibleAudioTranscriber): AudioTranscriber = impl
+
+    @Provides
+    @Singleton
+    fun provideVoiceEngine(engine: DefaultVoiceEngine): VoiceEngine = engine
+
+    @Provides
+    @Singleton
     fun provideToolRegistry(
         accessPolicy: ToolAccessPolicy,
         validator: ToolValidator,
@@ -246,7 +289,9 @@ object AppModule {
         launchAppTool: LaunchAppTool,
         waitForUiTool: WaitForUiTool,
         performUiActionTool: PerformUiActionTool,
-        takeScreenshotTool: TakeScreenshotTool
+        takeScreenshotTool: TakeScreenshotTool,
+        analyzeScreenshotTool: AnalyzeScreenshotTool,
+        visualVerifyTool: VisualVerifyTool
     ): ToolRegistry {
         return ToolRegistry(validator, accessPolicy, mcpRegistry).apply {
             register(notifyUserTool)
@@ -273,6 +318,8 @@ object AppModule {
             register(waitForUiTool)
             register(performUiActionTool)
             register(takeScreenshotTool)
+            register(analyzeScreenshotTool)
+            register(visualVerifyTool)
         }
     }
 }

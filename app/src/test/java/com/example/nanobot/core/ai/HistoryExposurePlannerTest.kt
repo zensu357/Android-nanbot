@@ -1,6 +1,8 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.Attachment
+import com.example.nanobot.core.model.AttachmentType
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.MessageRole
 import kotlin.test.Test
@@ -37,5 +39,31 @@ class HistoryExposurePlannerTest {
         val planned = planner.plan(AgentConfig(maxTokens = 256), history)
 
         assertEquals(MessageRole.USER, planned.first().role)
+    }
+
+    @Test
+    fun plannerTreatsImageAttachmentsAsHighCost() {
+        val withImage = ChatMessage(
+            role = MessageRole.USER,
+            content = "screenshot",
+            sessionId = "session-1",
+            attachments = listOf(
+                Attachment(
+                    type = AttachmentType.IMAGE,
+                    displayName = "screen.jpg",
+                    mimeType = "image/jpeg",
+                    sizeBytes = 256,
+                    localPath = "attachments/images/screen.jpg"
+                )
+            )
+        )
+        val recent = ChatMessage(role = MessageRole.USER, content = "recent", sessionId = "session-1")
+
+        val planned = planner.plan(
+            AgentConfig(maxTokens = 256),
+            listOf(withImage, recent)
+        )
+
+        assertTrue(planned.any { it.content == "recent" })
     }
 }

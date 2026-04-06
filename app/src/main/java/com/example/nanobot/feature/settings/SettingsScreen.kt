@@ -26,9 +26,11 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -42,7 +44,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.nanobot.core.model.VoiceEngineType
 import com.example.nanobot.core.mcp.McpAuthType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,7 +69,13 @@ fun SettingsScreen(
     onReasoningEffortChange: (String) -> Unit,
     onEnableToolsChange: (Boolean) -> Unit,
     onEnableMemoryChange: (Boolean) -> Unit,
+    onEnableVisualMemoryChange: (Boolean) -> Unit,
     onEnableBackgroundWorkChange: (Boolean) -> Unit,
+    onVoiceInputEnabledChange: (Boolean) -> Unit,
+    onVoiceAutoPlayChange: (Boolean) -> Unit,
+    onVoiceEngineChange: (VoiceEngineType) -> Unit,
+    onTtsSpeedChange: (String) -> Unit,
+    onTtsLanguageChange: (String) -> Unit,
     onHeartbeatEnabledChange: (Boolean) -> Unit,
     onHeartbeatInstructionsChange: (String) -> Unit,
     onWebSearchApiKeyChange: (String) -> Unit,
@@ -633,10 +642,48 @@ fun SettingsScreen(
                     onCheckedChange = onEnableMemoryChange
                 )
                 SettingToggleRow(
+                    label = "Enable Visual Memory",
+                    checked = state.enableVisualMemory,
+                    onCheckedChange = onEnableVisualMemoryChange
+                )
+                SettingToggleRow(
                     label = "Enable Background Work",
                     checked = state.enableBackgroundWork,
                     onCheckedChange = onEnableBackgroundWorkChange
                 )
+                SettingToggleRow(
+                    label = "Enable Voice Input",
+                    checked = state.voiceInputEnabled,
+                    onCheckedChange = onVoiceInputEnabledChange
+                )
+                SettingToggleRow(
+                    label = "Auto-play Assistant Voice",
+                    checked = state.voiceAutoPlay,
+                    onCheckedChange = onVoiceAutoPlayChange
+                )
+                VoiceEngineField(
+                    value = state.voiceEngine,
+                    onValueChange = onVoiceEngineChange,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = state.ttsLanguage,
+                    onValueChange = onTtsLanguageChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("TTS Language") },
+                    supportingText = { Text("BCP-47 language tag, e.g. zh-CN or en-US") }
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "TTS Speed: ${state.ttsSpeed}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Slider(
+                        value = state.ttsSpeed.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1.0f,
+                        onValueChange = { onTtsSpeedChange(String.format(java.util.Locale.US, "%.2f", it)) },
+                        valueRange = 0.5f..2.0f
+                    )
+                }
                 SettingToggleRow(
                     label = "Enable Heartbeat",
                     checked = state.heartbeatEnabled,
@@ -782,6 +829,46 @@ fun SettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun VoiceEngineField(
+    value: VoiceEngineType,
+    onValueChange: (VoiceEngineType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value.wireValue,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Voice Engine") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            VoiceEngineType.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.wireValue) },
+                    onClick = {
+                        expanded = false
+                        onValueChange(option)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun McpAuthTypeField(
     value: McpAuthType,
     onValueChange: (McpAuthType) -> Unit,
@@ -800,7 +887,7 @@ private fun McpAuthTypeField(
             label = { Text("Auth Type") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
-                .menuAnchor()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth()
         )
         DropdownMenu(

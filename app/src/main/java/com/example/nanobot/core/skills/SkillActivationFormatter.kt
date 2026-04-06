@@ -5,7 +5,11 @@ import javax.inject.Singleton
 
 @Singleton
 class SkillActivationFormatter @Inject constructor() {
-    fun format(payload: SkillActivationPayload, alreadyActivated: Boolean): String {
+    fun format(
+        payload: SkillActivationPayload,
+        alreadyActivated: Boolean,
+        effectiveAllowedTools: Set<String> = payload.skill.allowedTools.toSet()
+    ): String {
         return buildString {
             appendLine("<skill_content name=\"${payload.skill.primaryActivationName()}\">")
             appendLine("Description: ${payload.skill.description}")
@@ -13,8 +17,8 @@ class SkillActivationFormatter @Inject constructor() {
             payload.skill.compatibility?.takeIf { it.isNotBlank() }?.let {
                 appendLine("Compatibility: $it")
             }
-            if (payload.skill.allowedTools.isNotEmpty()) {
-                appendLine("Allowed Tools: ${payload.skill.allowedTools.joinToString()}")
+            if (effectiveAllowedTools.isNotEmpty()) {
+                appendLine("Allowed Tools: ${effectiveAllowedTools.sorted().joinToString()}")
             }
             if (payload.skill.validationIssues.isNotEmpty()) {
                 appendLine("Validation Warnings: ${payload.skill.validationIssues.joinToString { issue -> issue.message }}")

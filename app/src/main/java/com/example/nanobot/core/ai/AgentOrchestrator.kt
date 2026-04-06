@@ -1,5 +1,6 @@
 package com.example.nanobot.core.ai
 
+import com.example.nanobot.core.ai.provider.ProviderRegistry
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentProgressEvent
 import com.example.nanobot.core.model.AgentRunContext
@@ -22,8 +23,10 @@ class AgentOrchestrator @Inject constructor(
         runContext: AgentRunContext,
         onProgress: suspend (AgentProgressEvent) -> Unit
     ): AgentTurnResult {
+        val route = ProviderRegistry.resolve(config)
+        val effectiveRunContext = runContext.copy(supportsVision = route.supportsImageAttachments)
         val initialMessages = promptComposer.compose(
-            runContext = runContext,
+            runContext = effectiveRunContext,
             config = config,
             history = history,
             latestUserInput = userInput,
@@ -33,7 +36,7 @@ class AgentOrchestrator @Inject constructor(
             sessionId = sessionId,
             initialMessages = initialMessages,
             config = config,
-            runContext = runContext,
+            runContext = effectiveRunContext,
             onProgress = onProgress
         )
     }

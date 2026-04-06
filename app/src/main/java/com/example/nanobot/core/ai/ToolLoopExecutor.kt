@@ -1,22 +1,32 @@
 package com.example.nanobot.core.ai
 
+import com.example.nanobot.core.attachments.AttachmentStore
+import com.example.nanobot.core.ai.provider.ProviderRegistry
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentProgressEvent
 import com.example.nanobot.core.model.AgentRunContext
 import com.example.nanobot.core.model.AgentTurnResult
+import com.example.nanobot.core.model.Attachment
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.domain.repository.ChatRepository
+import com.example.nanobot.core.tools.ToolResult
 import com.example.nanobot.core.tools.ToolRegistry
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 class ToolLoopExecutor @Inject constructor(
     private val chatRepository: ChatRepository,
-    private val toolRegistry: ToolRegistry
+    private val toolRegistry: ToolRegistry,
+    private val attachmentStore: AttachmentStore? = null
 ) {
     suspend fun execute(
         sessionId: String,
@@ -26,10 +36,16 @@ class ToolLoopExecutor @Inject constructor(
         maxIterations: Int = config.maxToolIterations,
         onProgress: suspend (AgentProgressEvent) -> Unit = {}
     ): AgentTurnResult {
+        val effectiveRunContext = if (runContext.supportsVision) {
+            runContext
+        } else {
+            val route = ProviderRegistry.resolve(config)
+            runContext.copy(supportsVision = route.supportsImageAttachments)
+        }
         val messages = initialMessages.toMutableList()
         val emittedMessages = mutableListOf<ChatMessage>()
-        val visibleToolNames = toolRegistry.visibleTools(config, runContext).map { it.name }.toSet()
-        val availableTools = toolRegistry.getDefinitions(config, runContext).ifEmpty { null }
+        val visibleToolNames = toolRegistry.visibleTools(config, effectiveRunContext).map { it.name }.toSet()
+        val availableTools = toolRegistry.getDefinitions(config, effectiveRunContext).ifEmpty { null }
 
         onProgress(AgentProgressEvent.Started)
 
@@ -38,7 +54,7 @@ class ToolLoopExecutor @Inject constructor(
             val response = chatRepository.completeChat(
                 request = LlmChatRequest(
                     model = config.model,
-                    messages = messages,
+                    messages = messages.toList(),
                     temperature = config.temperature,
                     maxTokens = config.maxTokens,
                     tools = if (config.enableTools) availableTools else null,
@@ -66,16 +82,29 @@ class ToolLoopExecutor @Inject constructor(
                     onProgress(AgentProgressEvent.Error("Tool '${toolCall.name}' is blocked by the current tool access policy."))
                 }
                 val result = try {
-                    toolRegistry.execute(toolCall.name, toolCall.arguments, config, runContext)
+                    val structuredResult = toolRegistry.executeStructured(
+                        toolCall.name,
+                        toolCall.arguments,
+                        config,
+                        effectiveRunContext
+                    )
+                    if (!effectiveRunContext.supportsVision && structuredResult is ToolResult.Multimodal) {
+                        ToolResult.Text(structuredResult.text)
+                    } else {
+                        structuredResult
+                    }
                 } catch (throwable: Throwable) {
                     if (throwable is CancellationException) throw throwable
                     onProgress(AgentProgressEvent.Error(throwable.message ?: "Tool execution failed."))
                     throw throwable
                 }
+                val persistedAttachments = persistResultAttachments(toolCall.name, result)
+                val (textContent, llmMessage) = buildToolLlmMessage(toolCall.id, result)
                 val toolMessage = ChatMessage(
                     sessionId = sessionId,
                     role = MessageRole.TOOL,
-                    content = result,
+                    content = textContent,
+                    attachments = persistedAttachments,
                     toolCallId = toolCall.id,
                     toolName = toolCall.name.let { name ->
                         if (name == "activate_skill") {
@@ -88,7 +117,7 @@ class ToolLoopExecutor @Inject constructor(
                     protectedContext = toolCall.name == "activate_skill"
                 )
                 emittedMessages += toolMessage
-                messages += toolMessage.toLlmMessage()
+                messages += llmMessage ?: toolMessage.toLlmMessage()
                 onProgress(AgentProgressEvent.ToolResult(toolCall.name))
             }
         }
@@ -128,7 +157,7 @@ class ToolLoopExecutor @Inject constructor(
             val response = chatRepository.completeChat(
                 request = LlmChatRequest(
                     model = config.model,
-                    messages = messages,
+                    messages = messages.toList(),
                     temperature = config.temperature,
                     maxTokens = config.maxTokens,
                     tools = null,
@@ -155,5 +184,55 @@ class ToolLoopExecutor @Inject constructor(
             role = MessageRole.ASSISTANT,
             content = "I reached the maximum tool-iteration limit before finishing this task. Please continue the conversation if you want me to keep working from the results gathered so far."
         )
+    }
+
+    private suspend fun persistResultAttachments(
+        toolName: String,
+        result: ToolResult
+    ): List<Attachment> {
+        if (result !is ToolResult.Multimodal || result.images.isEmpty()) return emptyList()
+        val store = attachmentStore ?: return emptyList()
+
+        return result.images.mapIndexedNotNull { index, image ->
+            runCatching {
+                store.persistDataUrlImage(
+                    dataUrl = image.dataUrl,
+                    displayName = image.altText.ifBlank { "$toolName image ${index + 1}" }
+                )
+            }.getOrNull()
+        }
+    }
+
+    private fun buildToolLlmMessage(
+        toolCallId: String,
+        result: ToolResult
+    ): Pair<String, LlmMessageDto?> {
+        return when (result) {
+            is ToolResult.Text -> result.content to null
+            is ToolResult.Multimodal -> {
+                val textContent = result.text
+                val parts = buildJsonArray {
+                    if (result.text.isNotBlank()) {
+                        add(buildJsonObject {
+                            put("type", "text")
+                            put("text", result.text)
+                        })
+                    }
+                    result.images.forEach { image ->
+                        add(buildJsonObject {
+                            put("type", "image_url")
+                            putJsonObject("image_url") {
+                                put("url", image.dataUrl)
+                            }
+                        })
+                    }
+                }
+                textContent to LlmMessageDto(
+                    role = "tool",
+                    content = JsonArray(parts),
+                    toolCallId = toolCallId
+                )
+            }
+        }
     }
 }

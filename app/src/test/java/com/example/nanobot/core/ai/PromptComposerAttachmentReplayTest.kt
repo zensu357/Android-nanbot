@@ -1,5 +1,6 @@
 package com.example.nanobot.core.ai
 
+import com.example.nanobot.core.memory.VisualMemoryExtractor
 import com.example.nanobot.core.mcp.McpRefreshResult
 import com.example.nanobot.core.mcp.McpRegistry
 import com.example.nanobot.core.mcp.McpServerDefinition
@@ -27,11 +28,13 @@ import com.example.nanobot.domain.repository.WorkspaceRepository
 import com.example.nanobot.testutil.FakeSkillRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonPrimitive
 
 class PromptComposerAttachmentReplayTest {
@@ -52,7 +55,12 @@ class PromptComposerAttachmentReplayTest {
                 skillRepository = FakeSkillRepository(),
                 mcpRegistry = FakeMcpRegistry()
             ),
-            memoryConsolidator = MemoryConsolidator(FakeMemoryRepository(), FakeChatRepository(), MemoryPromptBuilder()),
+            memoryConsolidator = MemoryConsolidator(
+                FakeMemoryRepository(),
+                FakeChatRepository(),
+                MemoryPromptBuilder(),
+                VisualMemoryExtractor(FakeChatRepository())
+            ),
             memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
             historyExposurePlanner = HistoryExposurePlanner(),
             promptDiagnosticsStore = PromptDiagnosticsStore()
@@ -70,7 +78,7 @@ class PromptComposerAttachmentReplayTest {
 
         val messages = composer.compose(
             runContext = AgentRunContext.root("session-1"),
-            config = AgentConfig(maxTokens = 512),
+            config = AgentConfig(maxTokens = 512, model = "moonshot-v1"),
             history = listOf(
                 ChatMessage(
                     sessionId = "session-1",
@@ -96,6 +104,63 @@ class PromptComposerAttachmentReplayTest {
         val latestUserMessage = messages.last()
         assertEquals(1, latestUserMessage.attachments.size)
         assertEquals("fresh.png", latestUserMessage.attachments.single().fileName)
+    }
+
+    @Test
+    fun composeReplaysHistoricalImageAttachmentsWhenProviderSupportsVision() = runTest {
+        val composer = PromptComposer(
+            systemPromptBuilder = SystemPromptBuilder(
+                PromptPresetCatalog(),
+                FakeSkillRepository(),
+                ToolAccessPolicy(),
+                SkillSelector(),
+                SkillPromptAssembler(),
+                ContextBudgetPlanner()
+            ),
+            runtimeContextBuilder = RuntimeContextBuilder(
+                workspaceRepository = FakeWorkspaceRepository(),
+                toolRegistry = ToolRegistry(ToolValidator(), ToolAccessPolicy()),
+                skillRepository = FakeSkillRepository(),
+                mcpRegistry = FakeMcpRegistry()
+            ),
+            memoryConsolidator = MemoryConsolidator(
+                FakeMemoryRepository(),
+                FakeChatRepository(),
+                MemoryPromptBuilder(),
+                VisualMemoryExtractor(FakeChatRepository())
+            ),
+            memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
+            historyExposurePlanner = HistoryExposurePlanner(),
+            promptDiagnosticsStore = PromptDiagnosticsStore()
+        )
+
+        val historicalAttachment = Attachment(
+            id = "att-1",
+            type = AttachmentType.IMAGE,
+            displayName = "clipboard.png",
+            mimeType = "image/png",
+            sizeBytes = 128,
+            localPath = "attachments/images/clipboard.png"
+        )
+
+        val messages = composer.compose(
+            runContext = AgentRunContext.root("session-1", supportsVision = true),
+            config = AgentConfig(model = "gpt-4o-mini", maxTokens = 512),
+            history = listOf(
+                ChatMessage(
+                    sessionId = "session-1",
+                    role = MessageRole.USER,
+                    content = "Look at this chart",
+                    attachments = listOf(historicalAttachment)
+                )
+            ),
+            latestUserInput = "Continue",
+            latestAttachments = emptyList()
+        )
+
+        val replayedHistory = messages[1]
+        assertTrue(replayedHistory.attachments.isNotEmpty())
+        assertEquals("Look at this chart", replayedHistory.content?.jsonPrimitive?.content)
     }
 
     private class FakeMemoryRepository : MemoryRepository {

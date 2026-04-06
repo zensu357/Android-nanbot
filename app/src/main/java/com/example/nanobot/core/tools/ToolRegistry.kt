@@ -2,6 +2,7 @@ package com.example.nanobot.core.tools
 
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.ai.provider.ProviderRegistry
 import com.example.nanobot.core.mcp.McpRegistry
 import com.example.nanobot.core.mcp.McpToolAdapter
 import com.example.nanobot.core.model.LlmToolDefinitionDto
@@ -95,7 +96,36 @@ class ToolRegistry(
         return tool.execute(arguments, config, runContext)
     }
 
+    suspend fun executeStructured(
+        name: String,
+        arguments: JsonObject,
+        config: AgentConfig,
+        runContext: AgentRunContext = defaultRunContext(config)
+    ): ToolResult {
+        val tool = get(name) ?: return ToolResult.Text("Tool '$name' is not registered.")
+        val accessDecision = accessPolicy.assertExecutable(tool, config, runContext)
+        if (!accessDecision.allowed) {
+            return ToolResult.Text(
+                accessDecision.denialMessage
+                    ?: "Tool '$name' is blocked by the current tool access policy."
+            )
+        }
+        if (!tool.isAvailable(config, runContext)) {
+            return ToolResult.Text("Tool '$name' is unavailable in the current run context.")
+        }
+        val validation = validator.validate(arguments, tool.parametersSchema)
+        if (!validation.isValid) {
+            return ToolResult.Text(validation.errorMessage ?: "Invalid arguments for tool '$name'.")
+        }
+        return tool.executeStructured(arguments, config, runContext)
+    }
+
     private fun defaultRunContext(config: AgentConfig): AgentRunContext {
-        return AgentRunContext.root(sessionId = "tool-registry", maxSubagentDepth = config.maxSubagentDepth)
+        val route = ProviderRegistry.resolve(config)
+        return AgentRunContext.root(
+            sessionId = "tool-registry",
+            maxSubagentDepth = config.maxSubagentDepth,
+            supportsVision = route.supportsImageAttachments
+        )
     }
 }

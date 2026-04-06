@@ -21,6 +21,35 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
+private data class SettingsBaselineConfigInputs(
+    val config: com.example.nanobot.core.model.AgentConfig,
+    val skillsDirectoryUri: String?,
+    val skillRoots: List<String>,
+    val trustProjectSkills: Boolean,
+    val skills: List<com.example.nanobot.core.skills.SkillDefinition>
+)
+
+private data class SettingsBaselineDynamicInputs(
+    val skillDiscoveryIssues: List<com.example.nanobot.core.skills.SkillDiscoveryIssue>,
+    val pendingUnlockConsents: List<com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent>,
+    val mcpServers: List<com.example.nanobot.core.mcp.McpServerDefinition>,
+    val mcpTools: List<com.example.nanobot.core.mcp.McpToolDescriptor>,
+    val heartbeatEnabled: Boolean,
+    val heartbeatInstructions: String
+)
+
+private data class SettingsBaselineSkillInputs(
+    val skillDiscoveryIssues: List<com.example.nanobot.core.skills.SkillDiscoveryIssue>,
+    val pendingUnlockConsents: List<com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent>,
+    val mcpServers: List<com.example.nanobot.core.mcp.McpServerDefinition>,
+    val mcpTools: List<com.example.nanobot.core.mcp.McpToolDescriptor>
+)
+
+private data class SettingsBaselineHeartbeatInputs(
+    val heartbeatEnabled: Boolean,
+    val heartbeatInstructions: String
+)
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsConfigStore,
@@ -56,42 +85,66 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            combine(
+            val configInputsFlow = combine(
                 settingsDataStore.configFlow,
                 settingsDataStore.skillsDirectoryUriFlow,
                 settingsDataStore.skillRootsFlow,
                 settingsDataStore.trustProjectSkillsFlow,
-                skillRepository.observeSkills(),
-                skillRepository.observeDiscoveryIssues(),
-                pendingUnlockConsentsState,
-                mcpRegistry.observeServers(),
-                mcpRegistry.observeCachedTools(),
-                heartbeatRepository.observeHeartbeatEnabled(),
-                heartbeatRepository.observeHeartbeatInstructions()
-            ) { values ->
-                val config = values[0] as com.example.nanobot.core.model.AgentConfig
-                val skillsDirectoryUri = values[1] as String?
-                val skillRoots = values[2] as List<String>
-                val trustProjectSkills = values[3] as Boolean
-                val skills = values[4] as List<com.example.nanobot.core.skills.SkillDefinition>
-                val skillDiscoveryIssues = values[5] as List<com.example.nanobot.core.skills.SkillDiscoveryIssue>
-                val pendingUnlockConsents = values[6] as List<com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent>
-                val mcpServers = values[7] as List<com.example.nanobot.core.mcp.McpServerDefinition>
-                val mcpTools = values[8] as List<com.example.nanobot.core.mcp.McpToolDescriptor>
-                val heartbeatEnabled = values[9] as Boolean
-                val heartbeatInstructions = values[10] as String
-                SettingsBaselineState(
+                skillRepository.observeSkills()
+            ) { config, skillsDirectoryUri, skillRoots, trustProjectSkills, skills ->
+                SettingsBaselineConfigInputs(
                     config = config,
-                    heartbeatEnabled = heartbeatEnabled,
-                    heartbeatInstructions = heartbeatInstructions,
-                    skills = skills,
                     skillsDirectoryUri = skillsDirectoryUri,
                     skillRoots = skillRoots,
                     trustProjectSkills = trustProjectSkills,
+                    skills = skills
+                )
+            }
+            val skillInputsFlow = combine(
+                skillRepository.observeDiscoveryIssues(),
+                pendingUnlockConsentsState,
+                mcpRegistry.observeServers(),
+                mcpRegistry.observeCachedTools()
+            ) { skillDiscoveryIssues, pendingUnlockConsents, mcpServers, mcpTools ->
+                SettingsBaselineSkillInputs(
                     skillDiscoveryIssues = skillDiscoveryIssues,
                     pendingUnlockConsents = pendingUnlockConsents,
                     mcpServers = mcpServers,
-                    mcpToolCounts = mcpTools.groupingBy { it.serverId }.eachCount()
+                    mcpTools = mcpTools
+                )
+            }
+            val heartbeatInputsFlow = combine(
+                heartbeatRepository.observeHeartbeatEnabled(),
+                heartbeatRepository.observeHeartbeatInstructions()
+            ) { heartbeatEnabled, heartbeatInstructions ->
+                SettingsBaselineHeartbeatInputs(
+                    heartbeatEnabled = heartbeatEnabled,
+                    heartbeatInstructions = heartbeatInstructions
+                )
+            }
+            val dynamicInputsFlow = combine(skillInputsFlow, heartbeatInputsFlow) { skillInputs, heartbeatInputs ->
+                SettingsBaselineDynamicInputs(
+                    skillDiscoveryIssues = skillInputs.skillDiscoveryIssues,
+                    pendingUnlockConsents = skillInputs.pendingUnlockConsents,
+                    mcpServers = skillInputs.mcpServers,
+                    mcpTools = skillInputs.mcpTools,
+                    heartbeatEnabled = heartbeatInputs.heartbeatEnabled,
+                    heartbeatInstructions = heartbeatInputs.heartbeatInstructions
+                )
+            }
+            combine(configInputsFlow, dynamicInputsFlow) { configInputs, dynamicInputs ->
+                SettingsBaselineState(
+                    config = configInputs.config,
+                    heartbeatEnabled = dynamicInputs.heartbeatEnabled,
+                    heartbeatInstructions = dynamicInputs.heartbeatInstructions,
+                    skills = configInputs.skills,
+                    skillsDirectoryUri = configInputs.skillsDirectoryUri,
+                    skillRoots = configInputs.skillRoots,
+                    trustProjectSkills = configInputs.trustProjectSkills,
+                    skillDiscoveryIssues = dynamicInputs.skillDiscoveryIssues,
+                    pendingUnlockConsents = dynamicInputs.pendingUnlockConsents,
+                    mcpServers = dynamicInputs.mcpServers,
+                    mcpToolCounts = dynamicInputs.mcpTools.groupingBy { it.serverId }.eachCount()
                 )
             }.collect { baseline ->
                 applyBaseline(baseline)
@@ -119,7 +172,19 @@ class SettingsViewModel @Inject constructor(
 
     fun onEnableMemoryChanged(value: Boolean) = updateDraft { copy(enableMemory = value) }
 
+    fun onEnableVisualMemoryChanged(value: Boolean) = updateDraft { copy(enableVisualMemory = value) }
+
     fun onEnableBackgroundWorkChanged(value: Boolean) = updateDraft { copy(enableBackgroundWork = value) }
+
+    fun onVoiceInputEnabledChanged(value: Boolean) = updateDraft { copy(voiceInputEnabled = value) }
+
+    fun onVoiceAutoPlayChanged(value: Boolean) = updateDraft { copy(voiceAutoPlay = value) }
+
+    fun onVoiceEngineChanged(value: com.example.nanobot.core.model.VoiceEngineType) = updateDraft { copy(voiceEngine = value) }
+
+    fun onTtsSpeedChanged(value: String) = updateDraft { copy(ttsSpeed = value) }
+
+    fun onTtsLanguageChanged(value: String) = updateDraft { copy(ttsLanguage = value) }
 
     fun onHeartbeatEnabledChanged(value: Boolean) = updateDraft { copy(heartbeatEnabled = value) }
 

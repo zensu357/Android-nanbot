@@ -11,6 +11,7 @@ data class AgentConfig(
     val reasoningEffort: String? = null,
     val enableTools: Boolean = true,
     val enableMemory: Boolean = true,
+    val enableVisualMemory: Boolean = false,
     val enableBackgroundWork: Boolean = true,
     val webSearchApiKey: String = "",
     val webProxy: String = "",
@@ -19,5 +20,10 @@ data class AgentConfig(
     val enabledSkillIds: List<String> = emptyList(),
     val maxSubagentDepth: Int = 1,
     val systemPrompt: String = "You are Nanobot, a helpful Android-native assistant.",
-    val temperature: Double = 0.2
+    val temperature: Double = 0.2,
+    val voiceInputEnabled: Boolean = false,
+    val voiceAutoPlay: Boolean = false,
+    val voiceEngine: VoiceEngineType = VoiceEngineType.ANDROID,
+    val ttsSpeed: Float = 1.0f,
+    val ttsLanguage: String = "zh-CN"
 )

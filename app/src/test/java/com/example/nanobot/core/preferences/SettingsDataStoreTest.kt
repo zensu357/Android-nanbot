@@ -21,4 +21,15 @@ class SettingsDataStoreTest {
         val restored = dataStore.configFlow.first()
         assertEquals(listOf("coding_editor", "planner_mode"), restored.enabledSkillIds)
     }
+
+    @Test
+    fun savesAndReadsVisualMemoryFlag() = runTest {
+        val dataStore = SettingsDataStore(ApplicationProvider.getApplicationContext())
+        val config = AgentConfig(enableVisualMemory = true)
+
+        dataStore.save(config)
+
+        val restored = dataStore.configFlow.first()
+        assertEquals(true, restored.enableVisualMemory)
+    }
 }

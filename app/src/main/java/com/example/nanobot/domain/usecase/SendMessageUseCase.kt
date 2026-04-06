@@ -75,8 +75,10 @@ class SendMessageUseCase @Inject constructor(
         val activated = activatedSkillSessionStore.listActivated(sessionId)
         if (activated.isEmpty()) return null
         val declaredSets = activated.mapNotNull { record ->
-            val allowed = skillRepository.getSkillByName(record.skillName)?.allowedTools.orEmpty()
-                .map { it.trim() }
+            val skill = skillRepository.getSkillByName(record.skillName) ?: return@mapNotNull null
+            val allowed = (
+                skill.allowedTools + skillRepository.getHiddenToolEntitlements(skill)
+                ).map { it.trim() }
                 .filter { it.isNotBlank() }
                 .toSet()
             allowed.takeIf { it.isNotEmpty() }

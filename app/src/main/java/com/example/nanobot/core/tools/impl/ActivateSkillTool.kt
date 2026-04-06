@@ -55,6 +55,9 @@ class ActivateSkillTool @Inject constructor(
             contentHash = payload.skill.contentHash,
             source = ActivatedSkillSource.MODEL
         )
-        return formatter.format(payload, alreadyActivated)
+        val effectiveAllowedTools = (
+            payload.skill.allowedTools + skillRepository.getHiddenToolEntitlements(payload.skill)
+            ).toSortedSet()
+        return formatter.format(payload, alreadyActivated, effectiveAllowedTools)
     }
 }

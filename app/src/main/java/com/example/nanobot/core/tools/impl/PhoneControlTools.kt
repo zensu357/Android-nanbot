@@ -10,8 +10,10 @@ import com.example.nanobot.core.phonecontrol.PhoneUiSnapshotFormatter
 import com.example.nanobot.core.phonecontrol.ScrollDirection
 import com.example.nanobot.core.phonecontrol.SelectorMatchMode
 import com.example.nanobot.core.tools.AgentTool
+import com.example.nanobot.core.tools.ImagePart
 import com.example.nanobot.core.tools.ToolAccessCategory
 import com.example.nanobot.core.tools.ToolExposure
+import com.example.nanobot.core.tools.ToolResult
 import javax.inject.Inject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -26,6 +28,8 @@ import kotlinx.serialization.json.putJsonObject
 
 private const val AUTO_SNAPSHOT_DELAY_MS = 350L
 private const val AUTO_SNAPSHOT_MAX_NODES = 30
+private const val AUTO_SNAPSHOT_SCREENSHOT_QUALITY = 40
+private const val AUTO_SNAPSHOT_SCREENSHOT_MAX_WIDTH = 480
 
 abstract class BasePhoneControlTool : AgentTool {
     override val exposure: ToolExposure = ToolExposure.HIDDEN_UNLOCKABLE
@@ -42,6 +46,42 @@ abstract class BasePhoneControlTool : AgentTool {
         )
         val snapshotText = formatter.format(snapshot)
         return "$actionResult\n\n--- UI After Action ---\n$snapshotText"
+    }
+
+    protected suspend fun withAutoSnapshotStructured(
+        phoneControlService: PhoneControlService,
+        formatter: PhoneUiSnapshotFormatter,
+        actionResult: String,
+        includeScreenshot: Boolean
+    ): ToolResult {
+        kotlinx.coroutines.delay(AUTO_SNAPSHOT_DELAY_MS)
+        val snapshot = phoneControlService.readCurrentUi(
+            includeNonInteractive = false,
+            maxNodes = AUTO_SNAPSHOT_MAX_NODES
+        )
+        val snapshotText = formatter.format(snapshot)
+        val text = "$actionResult\n\n--- UI After Action ---\n$snapshotText"
+        if (!includeScreenshot) {
+            return ToolResult.Text(text)
+        }
+
+        val screenshot = phoneControlService.takeScreenshot(
+            quality = AUTO_SNAPSHOT_SCREENSHOT_QUALITY,
+            maxWidth = AUTO_SNAPSHOT_SCREENSHOT_MAX_WIDTH
+        )
+        return if (screenshot.success && screenshot.base64Jpeg != null) {
+            ToolResult.Multimodal(
+                text = text,
+                images = listOf(
+                    ImagePart(
+                        dataUrl = "data:image/jpeg;base64,${screenshot.base64Jpeg}",
+                        altText = "UI after action"
+                    )
+                )
+            )
+        } else {
+            ToolResult.Text(text)
+        }
     }
 
     protected fun hasAnySelector(selector: PhoneUiNodeSelector): Boolean {
@@ -131,6 +171,10 @@ class ReadCurrentUiTool @Inject constructor(
         )
         return formatter.format(snapshot)
     }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        return ToolResult.Text(execute(arguments, config, runContext))
+    }
 }
 
 class TapUiNodeTool @Inject constructor(
@@ -157,6 +201,19 @@ class TapUiNodeTool @Inject constructor(
             withAutoSnapshot(phoneControlService, formatter, result.message)
         } else {
             result.message
+        }
+    }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val selector = parseSelector(arguments)
+        if (!hasAnySelector(selector)) {
+            return ToolResult.Text("Provide at least one selector for tap_ui_node: 'nodeId', 'text', 'contentDescription', 'className', or 'viewIdResourceName'.")
+        }
+        val result = phoneControlService.tapUiNode(selector)
+        return if (result.success) {
+            withAutoSnapshotStructured(phoneControlService, formatter, result.message, runContext.supportsVision)
+        } else {
+            ToolResult.Text(result.message)
         }
     }
 }
@@ -193,6 +250,20 @@ class InputTextTool @Inject constructor(
             withAutoSnapshot(phoneControlService, formatter, result.message)
         } else {
             result.message
+        }
+    }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val inputText = arguments["inputText"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val selector = parseSelector(arguments)
+        if (!hasAnySelector(selector)) {
+            return ToolResult.Text("Provide at least one selector for input_text: 'nodeId', 'text', 'contentDescription', 'className', or 'viewIdResourceName'.")
+        }
+        val result = phoneControlService.inputText(selector, inputText)
+        return if (result.success) {
+            withAutoSnapshotStructured(phoneControlService, formatter, result.message, runContext.supportsVision)
+        } else {
+            ToolResult.Text(result.message)
         }
     }
 }
@@ -232,10 +303,24 @@ class ScrollUiTool @Inject constructor(
             result.message
         }
     }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val directionStr = arguments["direction"]?.jsonPrimitive?.contentOrNull ?: "forward"
+        val direction = ScrollDirection.from(directionStr)
+            ?: return ToolResult.Text("Unsupported scroll direction '$directionStr'. Supported values: forward, backward.")
+        val selector = parseSelector(arguments)
+        val result = phoneControlService.scrollNode(if (hasAnySelector(selector)) selector else null, direction)
+        return if (result.success) {
+            withAutoSnapshotStructured(phoneControlService, formatter, result.message, runContext.supportsVision)
+        } else {
+            ToolResult.Text(result.message)
+        }
+    }
 }
 
 class PressGlobalActionTool @Inject constructor(
-    private val phoneControlService: PhoneControlService
+    private val phoneControlService: PhoneControlService,
+    private val formatter: PhoneUiSnapshotFormatter
 ) : BasePhoneControlTool() {
     override val name: String = "press_global_action"
     override val description: String = "Invokes a global Android action such as back, home, recents, notifications, quick_settings, power_dialog, lock_screen, or take_screenshot"
@@ -265,12 +350,30 @@ class PressGlobalActionTool @Inject constructor(
         val action = arguments["action"]?.jsonPrimitive?.contentOrNull ?: "back"
         val parsed = PhoneGlobalAction.from(action)
             ?: return "Unsupported global action '$action'. Supported values: ${PhoneGlobalAction.entries.joinToString { it.wireName }}."
-        return phoneControlService.performGlobalAction(parsed).message
+        val result = phoneControlService.performGlobalAction(parsed)
+        return if (result.success) {
+            withAutoSnapshot(phoneControlService, formatter, result.message)
+        } else {
+            result.message
+        }
+    }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val action = arguments["action"]?.jsonPrimitive?.contentOrNull ?: "back"
+        val parsed = PhoneGlobalAction.from(action)
+            ?: return ToolResult.Text("Unsupported global action '$action'. Supported values: ${PhoneGlobalAction.entries.joinToString { it.wireName }}.")
+        val result = phoneControlService.performGlobalAction(parsed)
+        return if (result.success) {
+            withAutoSnapshotStructured(phoneControlService, formatter, result.message, runContext.supportsVision)
+        } else {
+            ToolResult.Text(result.message)
+        }
     }
 }
 
 class LaunchAppTool @Inject constructor(
-    private val phoneControlService: PhoneControlService
+    private val phoneControlService: PhoneControlService,
+    private val formatter: PhoneUiSnapshotFormatter
 ) : BasePhoneControlTool() {
     override val name: String = "launch_app"
     override val description: String = "Launches an Android app by package name"
@@ -294,9 +397,28 @@ class LaunchAppTool @Inject constructor(
         return if (!phoneControlService.isPackageInstalled(packageName)) {
             "Package '$packageName' is not installed on this device."
         } else if (phoneControlService.launchApp(packageName)) {
-            "Launched package '$packageName'."
+            withAutoSnapshot(phoneControlService, formatter, "Launched package '$packageName'.")
         } else {
             "Failed to launch package '$packageName'."
+        }
+    }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val packageName = arguments["packageName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        if (packageName.isBlank()) {
+            return ToolResult.Text("The 'packageName' field is required for launch_app.")
+        }
+        return if (!phoneControlService.isPackageInstalled(packageName)) {
+            ToolResult.Text("Package '$packageName' is not installed on this device.")
+        } else if (phoneControlService.launchApp(packageName)) {
+            withAutoSnapshotStructured(
+                phoneControlService = phoneControlService,
+                formatter = formatter,
+                actionResult = "Launched package '$packageName'.",
+                includeScreenshot = runContext.supportsVision
+            )
+        } else {
+            ToolResult.Text("Failed to launch package '$packageName'.")
         }
     }
 }
@@ -342,6 +464,21 @@ class WaitForUiTool @Inject constructor(
             result.message
         }
     }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val text = arguments["text"]?.jsonPrimitive?.contentOrNull
+        val contentDescription = arguments["contentDescription"]?.jsonPrimitive?.contentOrNull
+        if (text.isNullOrBlank() && contentDescription.isNullOrBlank()) {
+            return ToolResult.Text("Provide at least one condition for wait_for_ui: 'text' or 'contentDescription'.")
+        }
+        val timeoutMs = (arguments["timeoutMs"]?.jsonPrimitive?.intOrNull ?: 5000).coerceIn(100, 30000).toLong()
+        val result = phoneControlService.waitForCondition(text, contentDescription, timeoutMs)
+        return if (result.success) {
+            withAutoSnapshotStructured(phoneControlService, formatter, result.message, runContext.supportsVision)
+        } else {
+            ToolResult.Text(result.message)
+        }
+    }
 }
 
 class PerformUiActionTool @Inject constructor(
@@ -382,6 +519,23 @@ class PerformUiActionTool @Inject constructor(
             result.message
         }
     }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val actionStr = arguments["action"]?.jsonPrimitive?.contentOrNull
+            ?: return ToolResult.Text("The 'action' field is required for perform_ui_action.")
+        val action = NodeAction.from(actionStr)
+            ?: return ToolResult.Text("Unsupported action '$actionStr'. Supported: ${NodeAction.entries.joinToString { it.wireName }}.")
+        val selector = parseSelector(arguments)
+        if (!hasAnySelector(selector)) {
+            return ToolResult.Text("Provide at least one selector for perform_ui_action: 'nodeId', 'text', 'contentDescription', 'className', or 'viewIdResourceName'.")
+        }
+        val result = phoneControlService.performNodeAction(selector, action)
+        return if (result.success) {
+            withAutoSnapshotStructured(phoneControlService, formatter, result.message, runContext.supportsVision)
+        } else {
+            ToolResult.Text(result.message)
+        }
+    }
 }
 
 class TakeScreenshotTool @Inject constructor(
@@ -416,6 +570,25 @@ class TakeScreenshotTool @Inject constructor(
             "${result.message}\n[screenshot:data:image/jpeg;base64,${result.base64Jpeg}]"
         } else {
             result.message
+        }
+    }
+
+    override suspend fun executeStructured(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): ToolResult {
+        val quality = arguments["quality"]?.jsonPrimitive?.intOrNull ?: 60
+        val maxWidth = arguments["maxWidth"]?.jsonPrimitive?.intOrNull ?: 720
+        val result = phoneControlService.takeScreenshot(quality, maxWidth)
+        return if (result.success && result.base64Jpeg != null) {
+            ToolResult.Multimodal(
+                text = result.message,
+                images = listOf(
+                    ImagePart(
+                        dataUrl = "data:image/jpeg;base64,${result.base64Jpeg}",
+                        altText = "Current screen screenshot"
+                    )
+                )
+            )
+        } else {
+            ToolResult.Text(result.message)
         }
     }
 }

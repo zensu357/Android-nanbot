@@ -9,6 +9,7 @@ import com.example.nanobot.core.model.LlmAttachmentDto
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.ProviderType
+import com.example.nanobot.core.network.HttpClientFactory
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,9 +45,9 @@ class OpenAiCompatibleProviderAttachmentTest {
     @Test
     fun providerFactoryRejectsAttachmentsWhenResolvedProviderLacksCapability() = runTest {
         val factory = ProviderFactory(
-            openAiProvider = OpenAiProvider(OpenAiCompatibleProvider(ProviderRequestSanitizer(), AttachmentStore(context))),
-            openRouterProvider = OpenRouterProvider(OpenAiCompatibleProvider(ProviderRequestSanitizer(), AttachmentStore(context))),
-            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer(), AttachmentStore(context))
+            openAiProvider = OpenAiProvider(OpenAiCompatibleProvider(ProviderRequestSanitizer(), AttachmentStore(context), HttpClientFactory())),
+            openRouterProvider = OpenRouterProvider(OpenAiCompatibleProvider(ProviderRequestSanitizer(), AttachmentStore(context), HttpClientFactory())),
+            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer(), AttachmentStore(context), HttpClientFactory())
         )
         val request = LlmChatRequest(
             model = "gpt-4o-mini",

@@ -4,8 +4,14 @@ description: Unlocks basic phone control guidance for manual testing.
 allowed-tools:
   - read_current_ui
   - tap_ui_node
+  - scroll_ui
+  - input_text
   - press_global_action
   - launch_app
+  - wait_for_ui
+  - take_screenshot
+  - analyze_screenshot
+  - visual_verify
 tags:
   - android
   - phone-control

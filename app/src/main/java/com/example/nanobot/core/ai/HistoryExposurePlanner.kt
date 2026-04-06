@@ -1,6 +1,7 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.AttachmentType
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.MessageRole
 import javax.inject.Inject
@@ -59,7 +60,12 @@ class HistoryExposurePlanner @Inject constructor() {
 
     private fun estimateCost(message: ChatMessage): Int {
         val contentLength = message.content?.length ?: 0
-        val attachmentCost = message.attachments.size * 40
+        val attachmentCost = message.attachments.fold(0) { total, attachment ->
+            total + when (attachment.type) {
+                AttachmentType.IMAGE -> 800
+                AttachmentType.FILE -> 200
+            }
+        }
         val toolCost = if (message.toolCallsJson.isNullOrBlank()) 0 else 80
         return contentLength + attachmentCost + toolCost + 24
     }

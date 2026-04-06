@@ -423,7 +423,11 @@ class SkillRepositoryImplTest {
                 "scroll_ui",
                 "press_global_action",
                 "launch_app",
-                "wait_for_ui"
+                "wait_for_ui",
+                "perform_ui_action",
+                "take_screenshot",
+                "analyze_screenshot",
+                "visual_verify"
             ),
             repository.getHiddenToolEntitlements(imported)
         )
@@ -584,6 +588,11 @@ class SkillRepositoryImplTest {
             ---
             name: phone-operator-basic
             description: Unlock basic phone control guidance
+            allowed-tools:
+              - read_current_ui
+              - tap_ui_node
+              - analyze_screenshot
+              - visual_verify
             ---
             ## Instructions
             Read the UI before acting.

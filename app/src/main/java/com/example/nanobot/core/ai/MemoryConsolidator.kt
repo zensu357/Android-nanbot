@@ -1,7 +1,9 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.memory.MemoryFactGovernance
+import com.example.nanobot.core.memory.VisualMemoryExtractor
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.AttachmentType
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.DEFAULT_MEMORY_CONFIDENCE
 import com.example.nanobot.core.model.MemoryCandidateFact
@@ -22,7 +24,8 @@ import kotlinx.serialization.json.JsonPrimitive
 class MemoryConsolidator @Inject constructor(
     private val memoryRepository: MemoryRepository,
     private val chatRepository: ChatRepository,
-    private val memoryPromptBuilder: MemoryPromptBuilder
+    private val memoryPromptBuilder: MemoryPromptBuilder,
+    private val visualMemoryExtractor: VisualMemoryExtractor
 ) {
     private val parserJson = Json {
         ignoreUnknownKeys = true
@@ -87,12 +90,18 @@ class MemoryConsolidator @Inject constructor(
         }
 
         val result = parseResult(responseText) ?: return false
+        val visualCandidates = extractVisualCandidates(
+            config = config,
+            history = boundedHistory,
+            existingFacts = existingFacts
+        )
         persistResult(
             sessionId = sessionId,
             messageCount = history.size,
             result = result,
             existingFacts = existingFacts,
-            history = boundedHistory
+            history = boundedHistory,
+            visualCandidates = visualCandidates
         )
         return true
     }
@@ -136,7 +145,8 @@ class MemoryConsolidator @Inject constructor(
         messageCount: Int,
         result: MemoryConsolidationResult,
         existingFacts: List<MemoryFact>,
-        history: List<ChatMessage>
+        history: List<ChatMessage>,
+        visualCandidates: List<PersistableMemoryCandidate>
     ) {
         if (result.updatedSummary.isNotBlank()) {
             memoryRepository.upsertSummary(
@@ -160,7 +170,16 @@ class MemoryConsolidator @Inject constructor(
         val now = System.currentTimeMillis()
         val mutableFacts = existingFacts.toMutableList()
         val existingByNormalized = existingFacts.associateBy { normalizeFact(it.fact) }.toMutableMap()
-        val candidateFacts = buildCandidateFacts(result, history)
+        val candidateFacts = buildCandidateFacts(result, history).map { candidate ->
+            PersistableMemoryCandidate(
+                fact = candidate.fact,
+                confidence = candidate.confidence,
+                evidenceExcerpt = candidate.evidenceExcerpt,
+                sourceMessageIds = candidate.sourceMessageIds,
+                sourceKind = CONVERSATION_FACT_SOURCE_KIND,
+                extractor = CONVERSATION_FACT_EXTRACTOR
+            )
+        } + visualCandidates
         candidateFacts
             .map { candidate -> candidate.copy(fact = candidate.fact.trim()) }
             .filter { candidate -> candidate.fact.length >= 8 }
@@ -181,8 +200,8 @@ class MemoryConsolidator @Inject constructor(
                             messageIds = filterKnownMessageIds(candidate.sourceMessageIds, history),
                             evidenceExcerpt = candidate.evidenceExcerpt?.trim()?.takeIf { it.isNotBlank() }?.take(240)
                                 ?: history.lastMeaningfulExcerpt(),
-                            sourceKind = "conversation_fact",
-                            extractor = "llm_memory_consolidator"
+                            sourceKind = candidate.sourceKind,
+                            extractor = candidate.extractor
                         )
                     )
                     mutableFacts.removeAll { it.id == existing.id }
@@ -202,8 +221,8 @@ class MemoryConsolidator @Inject constructor(
                             messageIds = filterKnownMessageIds(candidate.sourceMessageIds, history),
                             evidenceExcerpt = candidate.evidenceExcerpt?.trim()?.takeIf { it.isNotBlank() }?.take(240)
                                 ?: history.lastMeaningfulExcerpt(),
-                            sourceKind = "conversation_fact",
-                            extractor = "llm_memory_consolidator"
+                            sourceKind = candidate.sourceKind,
+                            extractor = candidate.extractor
                         )
                     )
                     mutableFacts += newFact
@@ -214,6 +233,64 @@ class MemoryConsolidator @Inject constructor(
                 }
             }
         memoryRepository.pruneFacts(MAX_MEMORY_FACTS)
+    }
+
+    private suspend fun extractVisualCandidates(
+        config: AgentConfig,
+        history: List<ChatMessage>,
+        existingFacts: List<MemoryFact>
+    ): List<PersistableMemoryCandidate> {
+        if (!config.enableVisualMemory) return emptyList()
+
+        val screenshotMessage = history.asReversed().firstOrNull { message ->
+            message.role == com.example.nanobot.core.model.MessageRole.TOOL &&
+                message.attachments.any { it.type == AttachmentType.IMAGE }
+        } ?: return emptyList()
+
+        if (existingFacts.any { fact ->
+                fact.provenance.sourceKind == VISUAL_FACT_SOURCE_KIND && screenshotMessage.id in fact.provenance.messageIds
+            }
+        ) {
+            return emptyList()
+        }
+
+        val screenshot = screenshotMessage.attachments.lastOrNull { it.type == AttachmentType.IMAGE } ?: return emptyList()
+        val extractedFacts = runCatching {
+            visualMemoryExtractor.extractFacts(
+                screenshot = screenshot,
+                contextHint = buildVisualContextHint(history, screenshotMessage),
+                config = config
+            )
+        }.getOrDefault(emptyList())
+
+        return extractedFacts
+            .filter { it.confidence >= VISUAL_FACT_MIN_CONFIDENCE }
+            .map { fact ->
+                PersistableMemoryCandidate(
+                    fact = fact.fact,
+                    confidence = fact.confidence.toFloat(),
+                    evidenceExcerpt = screenshotMessage.content?.trim()?.takeIf { it.isNotBlank() } ?: history.lastMeaningfulExcerpt(),
+                    sourceMessageIds = listOf(screenshotMessage.id),
+                    sourceKind = VISUAL_FACT_SOURCE_KIND,
+                    extractor = VISUAL_FACT_EXTRACTOR
+                )
+            }
+    }
+
+    private fun buildVisualContextHint(
+        history: List<ChatMessage>,
+        screenshotMessage: ChatMessage
+    ): String {
+        return history
+            .filterNot { it.id == screenshotMessage.id }
+            .takeLast(4)
+            .mapNotNull { message ->
+                val content = message.content?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                "${message.role.name.lowercase()}: ${content.take(200)}"
+            }
+            .plus(screenshotMessage.toolName?.takeIf { it.isNotBlank() }?.let { "tool: $it" })
+            .joinToString("\n")
+            .take(800)
     }
 
     private fun parseResult(raw: String): MemoryConsolidationResult? {
@@ -284,5 +361,19 @@ class MemoryConsolidator @Inject constructor(
 
     private companion object {
         const val MAX_MEMORY_FACTS = 200
+        const val CONVERSATION_FACT_SOURCE_KIND = "conversation_fact"
+        const val CONVERSATION_FACT_EXTRACTOR = "llm_memory_consolidator"
+        const val VISUAL_FACT_SOURCE_KIND = "visual_extraction"
+        const val VISUAL_FACT_EXTRACTOR = "visual_memory_extractor"
+        const val VISUAL_FACT_MIN_CONFIDENCE = 0.7
     }
 }
+
+private data class PersistableMemoryCandidate(
+    val fact: String,
+    val confidence: Float,
+    val evidenceExcerpt: String?,
+    val sourceMessageIds: List<String>,
+    val sourceKind: String,
+    val extractor: String
+)

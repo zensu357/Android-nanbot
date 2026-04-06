@@ -25,13 +25,7 @@ class PromptComposer @Inject constructor(
         latestUserInput: String,
         latestAttachments: List<Attachment> = emptyList()
     ): List<LlmMessageDto> {
-        val route = ProviderRegistry.resolve(
-            providerType = config.providerType,
-            apiKey = config.apiKey,
-            baseUrl = config.baseUrl,
-            model = config.model,
-            temperature = config.temperature
-        )
+        val route = ProviderRegistry.resolve(config)
         val messages = mutableListOf<LlmMessageDto>()
         val memoryExposure = if (config.enableMemory) {
             memoryExposurePlanner.buildWithDiagnostics(runContext.sessionId, latestUserInput, history)
@@ -40,6 +34,7 @@ class PromptComposer @Inject constructor(
         }
         val systemPrompt = systemPromptBuilder.buildWithDiagnostics(
             config = config,
+            runContext = runContext,
             memoryContext = memoryExposure.context,
             latestUserInput = latestUserInput
         )
@@ -49,7 +44,7 @@ class PromptComposer @Inject constructor(
         )
         val historyExposure = historyExposurePlanner.planWithDiagnostics(config, history)
         historyExposure.messages.forEach { message ->
-            messages += message.toHistoryLlmMessage()
+            messages += message.toHistoryLlmMessage(includeImageAttachments = route.supportsImageAttachments)
         }
         val runtimeContext = runtimeContextBuilder.buildWithDiagnostics(config, runContext, route, latestUserInput)
         messages += LlmMessageDto(

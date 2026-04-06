@@ -7,6 +7,7 @@ import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.LlmToolDefinitionDto
 import com.example.nanobot.core.model.ProviderChatResult
 import com.example.nanobot.core.model.ToolCallRequest
+import com.example.nanobot.core.network.HttpClientFactory
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,13 +21,13 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class AzureOpenAiProvider @Inject constructor(
     private val requestSanitizer: ProviderRequestSanitizer,
-    private val attachmentStore: AttachmentStore
+    private val attachmentStore: AttachmentStore,
+    private val httpClientFactory: HttpClientFactory
 ) {
     suspend fun completeChat(
         config: AgentConfig,
@@ -75,12 +76,9 @@ class AzureOpenAiProvider @Inject constructor(
             level = okhttp3.logging.HttpLoggingInterceptor.Level.BODY
         }
 
-        OkHttpClient.Builder()
-            .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-            .addInterceptor(loggingInterceptor)
-            .build().newCall(httpRequest).execute().use { response ->
+        httpClientFactory.llmClient {
+            addInterceptor(loggingInterceptor)
+        }.newCall(httpRequest).execute().use { response ->
             if (!response.isSuccessful) {
                 return@withContext ProviderChatResult(
                     content = "Azure OpenAI API error ${response.code}: ${response.body?.string().orEmpty()}",

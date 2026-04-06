@@ -125,6 +125,43 @@ class SendMessageUseCaseTest {
     }
 
     @Test
+    fun activatedHiddenUnlockSkillAddsHiddenEntitlementsIntoAllowedToolNames() = runTest {
+        val sessionRepository = FakeSessionRepository()
+        val activatedStore = ActivatedSkillSessionStore().apply {
+            markActivated("session-1", "phone-operator-basic", "hash", ActivatedSkillSource.MODEL)
+        }
+        val unlockedSkill = SkillDefinition(
+            id = "phone-operator-basic",
+            name = "phone-operator-basic",
+            title = "Phone Operator",
+            description = "Unlocks phone tools",
+            source = SkillSource.IMPORTED,
+            allowedTools = listOf("read_current_ui")
+        )
+        val skillRepository = FakeSkillRepository(
+            skills = listOf(unlockedSkill),
+            hiddenEntitlementsBySkillId = mapOf(
+                "phone-operator-basic" to setOf("analyze_screenshot", "visual_verify")
+            )
+        )
+        val runner = CapturingAgentTurnRunner()
+        val useCase = SendMessageUseCase(
+            sessionRepository = sessionRepository,
+            agentTurnRunner = runner,
+            skillRepository = skillRepository,
+            activatedSkillSessionStore = activatedStore,
+            memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
+        )
+
+        useCase(input = "Operate visually", config = AgentConfig())
+
+        assertEquals(
+            setOf("read_current_ui", "analyze_screenshot", "visual_verify"),
+            runner.lastRunContext?.allowedToolNames
+        )
+    }
+
+    @Test
     fun deactivatedSkillInstructionsAreFilteredFromReplayHistory() = runTest {
         val sessionRepository = FakeSessionRepository().apply {
             savedMessages += ChatMessage(

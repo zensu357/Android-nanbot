@@ -31,22 +31,7 @@ fun ChatMessage.toLlmMessage(): LlmMessageDto {
     return LlmMessageDto(
         role = normalizedRole,
         content = normalizedContent,
-        attachments = attachments.map { attachment ->
-            when (attachment.type) {
-                AttachmentType.IMAGE -> LlmAttachmentDto(
-                    type = "image",
-                    mimeType = attachment.mimeType,
-                    fileName = attachment.displayName,
-                    localPath = attachment.localPath
-                )
-                AttachmentType.FILE -> LlmAttachmentDto(
-                    type = "file",
-                    mimeType = attachment.mimeType,
-                    fileName = attachment.displayName,
-                    localPath = attachment.localPath
-                )
-            }
-        },
+        attachments = attachments.toLlmAttachments(),
         toolCalls = toolCalls,
         toolCallId = toolCallId,
         // OpenAI-style tool result messages should carry only `tool_call_id`, not a `name` field.
@@ -59,14 +44,23 @@ fun ChatMessage.toLlmMessage(): LlmMessageDto {
     )
 }
 
-fun ChatMessage.toHistoryLlmMessage(): LlmMessageDto {
+fun ChatMessage.toHistoryLlmMessage(includeImageAttachments: Boolean = false): LlmMessageDto {
     if (attachments.isEmpty()) return toLlmMessage()
 
-    val attachmentCount = attachments.size
-    val historyNote = if (attachmentCount == 1) {
+    val replayableAttachments = if (includeImageAttachments) {
+        attachments.filter { it.type == AttachmentType.IMAGE }
+    } else {
+        emptyList()
+    }
+    val omittedCount = attachments.size - replayableAttachments.size
+    if (omittedCount == 0) {
+        return toLlmMessage().copy(attachments = replayableAttachments.toLlmAttachments())
+    }
+
+    val historyNote = if (omittedCount == 1) {
         "[A prior attachment was omitted from replay for provider compatibility. Ask the user to re-attach it if needed.]"
     } else {
-        "[$attachmentCount prior attachments were omitted from replay for provider compatibility. Ask the user to re-attach them if needed.]"
+        "[$omittedCount prior attachments were omitted from replay for provider compatibility. Ask the user to re-attach them if needed.]"
     }
     val mergedContent = listOfNotNull(
         content?.takeIf { it.isNotBlank() },
@@ -75,7 +69,7 @@ fun ChatMessage.toHistoryLlmMessage(): LlmMessageDto {
 
     return toLlmMessage().copy(
         content = JsonPrimitive(mergedContent.ifBlank { historyNote }),
-        attachments = emptyList()
+        attachments = replayableAttachments.toLlmAttachments()
     )
 }
 
@@ -104,3 +98,22 @@ private fun ToolCallRequest.toDto(): LlmToolCallDto = LlmToolCallDto(
     ),
     thoughtSignature = thoughtSignature
 )
+
+private fun List<com.example.nanobot.core.model.Attachment>.toLlmAttachments(): List<LlmAttachmentDto> {
+    return map { attachment ->
+        when (attachment.type) {
+            AttachmentType.IMAGE -> LlmAttachmentDto(
+                type = "image",
+                mimeType = attachment.mimeType,
+                fileName = attachment.displayName,
+                localPath = attachment.localPath
+            )
+            AttachmentType.FILE -> LlmAttachmentDto(
+                type = "file",
+                mimeType = attachment.mimeType,
+                fileName = attachment.displayName,
+                localPath = attachment.localPath
+            )
+        }
+    }
+}

@@ -10,6 +10,7 @@ import com.example.nanobot.core.model.LlmAttachmentDto
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.ProviderType
+import com.example.nanobot.core.network.HttpClientFactory
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -64,7 +65,8 @@ class OpenAiCompatibleProviderMultimodalIntegrationTest {
         }
         val provider = OpenAiCompatibleProvider(
             requestSanitizer = ProviderRequestSanitizer(),
-            attachmentStore = AttachmentStore(context)
+            attachmentStore = AttachmentStore(context),
+            httpClientFactory = HttpClientFactory()
         )
         val route = ProviderRegistry.resolve(
             providerType = ProviderType.OPENAI_COMPATIBLE,
@@ -139,7 +141,8 @@ class OpenAiCompatibleProviderMultimodalIntegrationTest {
 
         val provider = OpenAiCompatibleProvider(
             requestSanitizer = ProviderRequestSanitizer(),
-            attachmentStore = AttachmentStore(context)
+            attachmentStore = AttachmentStore(context),
+            httpClientFactory = HttpClientFactory()
         )
         val route = ProviderRegistry.resolve(
             providerType = ProviderType.OPENAI_COMPATIBLE,

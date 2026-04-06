@@ -10,6 +10,7 @@ import com.example.nanobot.core.model.LlmAttachmentDto
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.ProviderType
+import com.example.nanobot.core.network.HttpClientFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -24,12 +25,13 @@ class ProviderFactoryAttachmentTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val transport = OpenAiCompatibleProvider(
             requestSanitizer = ProviderRequestSanitizer(),
-            attachmentStore = AttachmentStore(context)
+            attachmentStore = AttachmentStore(context),
+            httpClientFactory = HttpClientFactory()
         )
         val factory = ProviderFactory(
             openAiProvider = OpenAiProvider(transport),
             openRouterProvider = OpenRouterProvider(transport),
-            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer(), AttachmentStore(context))
+            azureOpenAiProvider = AzureOpenAiProvider(ProviderRequestSanitizer(), AttachmentStore(context), HttpClientFactory())
         )
         val request = LlmChatRequest(
             model = "gpt-4o-mini",

@@ -11,6 +11,8 @@ import com.example.nanobot.core.skills.ActivatedSkillSource
 import com.example.nanobot.core.preferences.SettingsDataStore
 import com.example.nanobot.core.skills.ActivatedSkillSessionStore
 import com.example.nanobot.core.skills.SkillActivationFormatter
+import com.example.nanobot.core.voice.VoiceEngine
+import com.example.nanobot.core.voice.VoiceState
 import com.example.nanobot.domain.repository.SkillRepository
 import com.example.nanobot.domain.repository.SessionRepository
 import com.example.nanobot.domain.usecase.SendMessageUseCase
@@ -36,12 +38,14 @@ class ChatViewModel @Inject constructor(
     private val skillRepository: SkillRepository,
     private val skillActivationFormatter: SkillActivationFormatter,
     private val activatedSkillSessionStore: ActivatedSkillSessionStore,
+    private val voiceEngine: VoiceEngine,
     settingsDataStore: SettingsDataStore
 ) : ViewModel() {
     private val input = MutableStateFlow("")
     private val uiStateInternal = MutableStateFlow(ChatUiState())
     private var currentConfig: AgentConfig = AgentConfig()
     private var runningJob: Job? = null
+    private var voiceInputJob: Job? = null
     private var lastSessionId: String? = null
 
     private val currentSession = sessionRepository.observeCurrentSession()
@@ -107,6 +111,16 @@ class ChatViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            voiceEngine.state.collect { voiceState ->
+                updateState {
+                    copy(
+                        voiceState = voiceState,
+                        voiceStatusHint = voiceHintFor(voiceState)
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.configFlow.collect { config ->
                 currentConfig = config
                 val enabled = skillRepository.getEnabledSkills(config).map { skill ->
@@ -120,6 +134,8 @@ class ChatViewModel @Inject constructor(
                 updateState {
                     copy(
                         availableSkills = enabled,
+                        voiceInputEnabled = config.voiceInputEnabled,
+                        voiceAutoPlayEnabled = config.voiceAutoPlay,
                         activeSkills = activeSkills.map { active ->
                             active.copy(title = enabled.firstOrNull { it.name == active.name }?.title ?: active.title)
                         }.filter { it.name in activeNames }
@@ -136,11 +152,67 @@ class ChatViewModel @Inject constructor(
     fun sendMessage() {
         val content = input.value.trim()
         val attachments = uiStateInternal.value.pendingAttachments
+        sendMessage(content, attachments)
+    }
+
+    fun toggleVoiceInput() {
+        if (voiceEngine.state.value == VoiceState.LISTENING || voiceEngine.state.value == VoiceState.PROCESSING) {
+            finishVoiceInput()
+        } else {
+            startVoiceInput()
+        }
+    }
+
+    fun stopVoiceOutput() {
+        voiceEngine.stopSpeaking()
+    }
+
+    fun startVoiceInput() {
+        if (uiStateInternal.value.isRunning) return
+        if (voiceInputJob?.isActive == true) return
+        voiceInputJob = viewModelScope.launch {
+            runCatching {
+                val text = voiceEngine.listen()
+                if (text.isNotBlank()) {
+                    sendMessage(text.trim())
+                }
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) return@onFailure
+                updateState {
+                    copy(
+                        errorMessage = throwable.message ?: "Voice input failed.",
+                        voiceStatusHint = "Voice input failed"
+                    )
+                }
+            }
+        }.also { job ->
+            job.invokeOnCompletion { voiceInputJob = null }
+        }
+    }
+
+    fun finishVoiceInput() {
+        voiceEngine.stopListening()
+    }
+
+    fun onVoicePermissionDenied() {
+        updateState {
+            copy(
+                errorMessage = "Microphone permission is required for voice input.",
+                voiceStatusHint = "Microphone permission required"
+            )
+        }
+    }
+
+    private fun sendMessage(
+        content: String,
+        attachments: List<com.example.nanobot.core.model.Attachment> = uiStateInternal.value.pendingAttachments
+    ) {
         if ((content.isEmpty() && attachments.isEmpty()) || uiStateInternal.value.isRunning) {
             return
         }
 
         runningJob = viewModelScope.launch {
+            voiceEngine.stopListening()
             updateState {
                 copy(
                     isSending = true,
@@ -152,7 +224,7 @@ class ChatViewModel @Inject constructor(
                 )
             }
             try {
-                sendMessageUseCase(content, attachments, currentConfig) { event ->
+                val turnMessages = sendMessageUseCase(content, attachments, currentConfig) { event ->
                     when (event) {
                         AgentProgressEvent.Started -> updateState {
                             copy(statusText = "Starting...", activeToolName = null)
@@ -186,6 +258,7 @@ class ChatViewModel @Inject constructor(
                         }
                     }
                 }
+                maybeAutoSpeakAssistantReply(turnMessages)
                 input.value = ""
                 updateState { copy(statusText = null, pendingAttachments = emptyList()) }
             } catch (throwable: Throwable) {
@@ -282,7 +355,10 @@ class ChatViewModel @Inject constructor(
                     skillName = payload.skill.primaryActivationName(),
                     contentHash = payload.skill.contentHash
                 )
-                val content = skillActivationFormatter.format(payload, alreadyActivated)
+                val effectiveAllowedTools = (
+                    payload.skill.allowedTools + skillRepository.getHiddenToolEntitlements(payload.skill)
+                    ).toSortedSet()
+                val content = skillActivationFormatter.format(payload, alreadyActivated, effectiveAllowedTools)
                 activatedSkillSessionStore.markActivated(
                     session.id,
                     payload.skill.primaryActivationName(),
@@ -319,6 +395,46 @@ class ChatViewModel @Inject constructor(
 
     private fun updateState(transform: ChatUiState.() -> ChatUiState) {
         uiStateInternal.value = uiStateInternal.value.transform()
+    }
+
+    override fun onCleared() {
+        voiceInputJob?.cancel()
+        voiceEngine.release()
+        super.onCleared()
+    }
+
+    private fun maybeAutoSpeakAssistantReply(turnMessages: List<com.example.nanobot.core.model.ChatMessage>) {
+        if (!currentConfig.voiceAutoPlay) return
+        val latestAssistantMessage = turnMessages.lastOrNull { message ->
+            message.role == MessageRole.ASSISTANT &&
+                !message.protectedContext &&
+                message.toolCallsJson.isNullOrBlank() &&
+                !message.content.isNullOrBlank()
+        }
+        val latestAssistant = latestAssistantMessage?.content.orEmpty().trim()
+        if (latestAssistant.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                voiceEngine.speak(latestAssistant)
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) return@onFailure
+                updateState {
+                    copy(
+                        errorMessage = throwable.message ?: "Voice playback failed.",
+                        voiceStatusHint = "Voice playback failed"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun voiceHintFor(state: VoiceState): String? {
+        return when (state) {
+            VoiceState.IDLE -> null
+            VoiceState.LISTENING -> "Listening... tap to finish"
+            VoiceState.PROCESSING -> "Transcribing voice input..."
+            VoiceState.SPEAKING -> "Playing voice reply... tap to stop"
+        }
     }
 }
 

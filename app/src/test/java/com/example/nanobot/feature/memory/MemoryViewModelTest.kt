@@ -3,6 +3,7 @@
 package com.example.nanobot.feature.memory
 
 import com.example.nanobot.core.ai.MemoryConsolidator
+import com.example.nanobot.core.memory.VisualMemoryExtractor
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.ChatSession
 import com.example.nanobot.core.model.AgentConfig
@@ -162,7 +163,8 @@ class MemoryViewModelTest {
             memoryConsolidator = MemoryConsolidator(
                 memoryRepository = memoryRepository,
                 chatRepository = FakeChatRepository(),
-                memoryPromptBuilder = com.example.nanobot.core.ai.MemoryPromptBuilder()
+                memoryPromptBuilder = com.example.nanobot.core.ai.MemoryPromptBuilder(),
+                visualMemoryExtractor = VisualMemoryExtractor(FakeChatRepository())
             )
         )
     }

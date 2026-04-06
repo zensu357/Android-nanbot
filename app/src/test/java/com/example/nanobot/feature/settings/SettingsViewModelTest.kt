@@ -10,6 +10,7 @@ import com.example.nanobot.core.mcp.McpServerDefinition
 import com.example.nanobot.core.mcp.McpToolDescriptor
 import com.example.nanobot.core.mcp.McpToolDiscoverySnapshot
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.VoiceEngineType
 import com.example.nanobot.core.preferences.SettingsConfigStore
 import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.skills.PhoneControlUnlockReceipt
@@ -18,7 +19,10 @@ import com.example.nanobot.core.skills.SkillDiscoveryIssue
 import com.example.nanobot.core.skills.SkillScope
 import com.example.nanobot.core.worker.WorkerSchedulingController
 import com.example.nanobot.domain.repository.HeartbeatRepository
+import com.example.nanobot.domain.repository.SystemAccessRepository
+import com.example.nanobot.domain.repository.SystemAccessState
 import com.example.nanobot.testutil.FakeSkillRepository
+import android.content.Intent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -260,6 +264,53 @@ class SettingsViewModelTest {
         assertEquals(1, viewModel.uiState.value.pendingPhoneControlUnlockConsents.size)
     }
 
+    @Test
+    fun savePersistsVoiceSettings() = runSettingsTest {
+        val settingsStore = FakeSettingsConfigStore(AgentConfig())
+        val viewModel = createViewModel(
+            settingsStore,
+            FakeHeartbeatRepository(),
+            FakeMcpRegistry(),
+            FakeWorkerScheduler()
+        )
+
+        advanceUntilIdle()
+        viewModel.onVoiceInputEnabledChanged(true)
+        viewModel.onVoiceAutoPlayChanged(true)
+        viewModel.onVoiceEngineChanged(VoiceEngineType.WHISPER)
+        viewModel.onTtsLanguageChanged("en-US")
+        viewModel.onTtsSpeedChanged("1.40")
+
+        viewModel.saveSettings()
+        advanceUntilIdle()
+
+        val saved = settingsStore.savedConfig
+        assertEquals(true, saved?.voiceInputEnabled)
+        assertEquals(true, saved?.voiceAutoPlay)
+        assertEquals(VoiceEngineType.WHISPER, saved?.voiceEngine)
+        assertEquals("en-US", saved?.ttsLanguage)
+        assertEquals(1.4f, saved?.ttsSpeed)
+    }
+
+    @Test
+    fun savePersistsVisualMemorySetting() = runSettingsTest {
+        val settingsStore = FakeSettingsConfigStore(AgentConfig())
+        val viewModel = createViewModel(
+            settingsStore,
+            FakeHeartbeatRepository(),
+            FakeMcpRegistry(),
+            FakeWorkerScheduler()
+        )
+
+        advanceUntilIdle()
+        viewModel.onEnableVisualMemoryChanged(true)
+
+        viewModel.saveSettings()
+        advanceUntilIdle()
+
+        assertEquals(true, settingsStore.savedConfig?.enableVisualMemory)
+    }
+
     private fun runSettingsTest(block: suspend kotlinx.coroutines.test.TestScope.() -> Unit) {
         val dispatcher = StandardTestDispatcher()
         Dispatchers.setMain(dispatcher)
@@ -285,8 +336,28 @@ class SettingsViewModelTest {
             skillRepository = skillRepository,
             mcpRegistry = mcpRegistry,
             heartbeatRepository = heartbeatRepository,
+            systemAccessRepository = FakeSystemAccessRepository(),
             nanobotWorkerScheduler = workerScheduler
         )
+    }
+
+    private class FakeSystemAccessRepository : SystemAccessRepository {
+        private val state = MutableStateFlow(
+            SystemAccessState(
+                notificationPermissionRequired = false,
+                notificationPermissionGranted = true,
+                notificationsEnabled = true,
+                accessibilityEnabled = false
+            )
+        )
+
+        override fun observeSystemAccessState(): Flow<SystemAccessState> = state
+
+        override suspend fun refresh() = Unit
+
+        override fun buildOpenNotificationSettingsIntent(): Intent = Intent("test.notification.settings")
+
+        override fun buildOpenAccessibilitySettingsIntent(): Intent = Intent("test.accessibility.settings")
     }
 
     private class FakeSkillRepositoryWithConsent(

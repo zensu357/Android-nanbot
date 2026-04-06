@@ -9,7 +9,9 @@ import com.example.nanobot.core.phonecontrol.PhoneUiNode
 import com.example.nanobot.core.phonecontrol.PhoneUiNodeSelector
 import com.example.nanobot.core.phonecontrol.PhoneUiSnapshot
 import com.example.nanobot.core.phonecontrol.PhoneUiSnapshotFormatter
-import com.example.nanobot.core.tools.impl.BasePhoneControlTool
+import com.example.nanobot.core.phonecontrol.ScrollDirection
+import com.example.nanobot.core.phonecontrol.SelectorMatchMode
+import com.example.nanobot.core.phonecontrol.ScreenshotResult
 import com.example.nanobot.core.tools.impl.InputTextTool
 import com.example.nanobot.core.tools.impl.LaunchAppTool
 import com.example.nanobot.core.tools.impl.PressGlobalActionTool
@@ -17,6 +19,7 @@ import com.example.nanobot.core.tools.impl.ReadCurrentUiTool
 import com.example.nanobot.core.tools.impl.ScrollUiTool
 import com.example.nanobot.core.tools.impl.TapUiNodeTool
 import com.example.nanobot.core.tools.impl.WaitForUiTool
+import kotlin.test.assertIs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -34,12 +37,12 @@ class PhoneControlToolsTest {
 
     private val tools = listOf(
         ReadCurrentUiTool(fakePhoneControlService, formatter),
-        TapUiNodeTool(fakePhoneControlService),
-        InputTextTool(),
-        ScrollUiTool(),
-        PressGlobalActionTool(fakePhoneControlService),
-        LaunchAppTool(fakePhoneControlService),
-        WaitForUiTool()
+        TapUiNodeTool(fakePhoneControlService, formatter),
+        InputTextTool(fakePhoneControlService, formatter),
+        ScrollUiTool(fakePhoneControlService, formatter),
+        PressGlobalActionTool(fakePhoneControlService, formatter),
+        LaunchAppTool(fakePhoneControlService, formatter),
+        WaitForUiTool(fakePhoneControlService, formatter)
     )
 
     @Test
@@ -64,57 +67,71 @@ class PhoneControlToolsTest {
 
     @Test
     fun pressGlobalActionDelegatesToPhoneControlService() = runTest {
-        val result = PressGlobalActionTool(fakePhoneControlService).execute(
+        val result = PressGlobalActionTool(fakePhoneControlService, formatter).execute(
             buildJsonObject { put("action", "home") },
             AgentConfig(enableTools = true),
             unlockedRunContext()
         )
 
-        assertEquals("Performed global action 'home'.", result)
+        assertTrue(result.contains("Performed global action 'home'."))
+        assertTrue(result.contains("--- UI After Action ---"))
         assertEquals(PhoneGlobalAction.HOME, fakePhoneControlService.lastGlobalAction)
     }
 
     @Test
     fun tapUiNodeDelegatesToPhoneControlService() = runTest {
-        val result = TapUiNodeTool(fakePhoneControlService).execute(
+        val result = TapUiNodeTool(fakePhoneControlService, formatter).execute(
             buildJsonObject {
                 put("text", "Wi-Fi")
             },
             AgentConfig(enableTools = true),
             unlockedRunContext()
         )
-
-        assertEquals("Tapped UI node 'android:id/title'.", result)
+        assertTrue(result.contains("Tapped UI node 'android:id/title'."))
         assertEquals(
-            PhoneUiNodeSelector(text = "Wi-Fi"),
+            PhoneUiNodeSelector(text = "Wi-Fi", matchMode = SelectorMatchMode.EXACT),
             fakePhoneControlService.lastNodeSelector
         )
     }
 
     @Test
     fun launchAppInvokesPhoneControlService() = runTest {
-        val result = LaunchAppTool(fakePhoneControlService).execute(
+        val result = LaunchAppTool(fakePhoneControlService, formatter).execute(
             buildJsonObject { put("packageName", "com.android.settings") },
             AgentConfig(enableTools = true),
             unlockedRunContext()
         )
 
-        assertEquals("Launched package 'com.android.settings'.", result)
+        assertTrue(result.contains("Launched package 'com.android.settings'."))
         assertEquals("com.android.settings", fakePhoneControlService.lastLaunchedPackage)
     }
 
     @Test
-    fun stubToolsStillReturnStubMessage() = runTest {
-        val inputResult = InputTextTool().execute(
+    fun inputTextDelegatesToPhoneControlService() = runTest {
+        val inputResult = InputTextTool(fakePhoneControlService, formatter).execute(
             buildJsonObject {
                 put("nodeId", "input-1")
-                put("text", "hello")
+                put("inputText", "hello")
             },
             AgentConfig(enableTools = true),
             unlockedRunContext()
         )
 
-        assertTrue(inputResult.contains("not wired in yet"))
+        assertTrue(inputResult.contains("Entered text into 'input-1'."))
+    }
+
+    @Test
+    fun takeScreenshotStructuredReturnsMultimodalResult() = runTest {
+        val result = com.example.nanobot.core.tools.impl.TakeScreenshotTool(fakePhoneControlService)
+            .executeStructured(
+                buildJsonObject {},
+                AgentConfig(enableTools = true),
+                unlockedRunContext().copy(supportsVision = true)
+            )
+
+        val multimodal = assertIs<ToolResult.Multimodal>(result)
+        assertEquals("Screenshot captured (3 bytes, JPEG q=60).", multimodal.text)
+        assertEquals("data:image/jpeg;base64,AAA", multimodal.images.single().dataUrl)
     }
 
     private fun unlockedRunContext(): AgentRunContext {
@@ -128,6 +145,7 @@ class PhoneControlToolsTest {
         var lastGlobalAction: PhoneGlobalAction? = null
         var lastNodeSelector: PhoneUiNodeSelector? = null
         var lastLaunchedPackage: String? = null
+        var lastInputText: String? = null
 
         override fun readCurrentUi(includeNonInteractive: Boolean, maxNodes: Int): PhoneUiSnapshot {
             return PhoneUiSnapshot(
@@ -165,6 +183,28 @@ class PhoneControlToolsTest {
         override fun tapUiNode(selector: PhoneUiNodeSelector): PhoneControlActionResult {
             lastNodeSelector = selector
             return PhoneControlActionResult(true, "Tapped UI node 'android:id/title'.")
+        }
+
+        override fun inputText(selector: PhoneUiNodeSelector, text: String): PhoneControlActionResult {
+            lastNodeSelector = selector
+            lastInputText = text
+            return PhoneControlActionResult(true, "Entered text into '${selector.nodeId}'.")
+        }
+
+        override fun scrollNode(selector: PhoneUiNodeSelector?, direction: ScrollDirection): PhoneControlActionResult {
+            return PhoneControlActionResult(true, "Scrolled ${direction.wireName}.")
+        }
+
+        override suspend fun waitForCondition(
+            text: String?,
+            contentDescription: String?,
+            timeoutMs: Long
+        ): PhoneControlActionResult {
+            return PhoneControlActionResult(true, "Condition met.")
+        }
+
+        override suspend fun takeScreenshot(quality: Int, maxWidth: Int): ScreenshotResult {
+            return ScreenshotResult(true, "Screenshot captured (3 bytes, JPEG q=$quality).", "AAA")
         }
 
         override fun launchApp(packageName: String): Boolean {

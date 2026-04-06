@@ -1,6 +1,7 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.AgentRunContext
 import com.example.nanobot.domain.repository.SkillRepository
 import com.example.nanobot.core.tools.ToolAccessPolicy
 import javax.inject.Inject
@@ -13,14 +14,20 @@ class SystemPromptBuilder @Inject constructor(
     private val skillPromptAssembler: SkillPromptAssembler,
     private val contextBudgetPlanner: ContextBudgetPlanner
 ) {
-    suspend fun build(config: AgentConfig, memoryContext: String?, latestUserInput: String = ""): String {
-        return buildWithDiagnostics(config, memoryContext, latestUserInput).prompt
+    suspend fun build(
+        config: AgentConfig,
+        memoryContext: String?,
+        latestUserInput: String = "",
+        runContext: AgentRunContext = AgentRunContext.root("system-prompt")
+    ): String {
+        return buildWithDiagnostics(config, memoryContext, latestUserInput, runContext).prompt
     }
 
     suspend fun buildWithDiagnostics(
         config: AgentConfig,
         memoryContext: String?,
-        latestUserInput: String = ""
+        latestUserInput: String = "",
+        runContext: AgentRunContext = AgentRunContext.root("system-prompt")
     ): SystemPromptBuildResult {
         val preset = promptPresetCatalog.getById(config.presetId)
         val enabledSkills = skillRepository.getEnabledSkills(config)
@@ -115,6 +122,24 @@ class SystemPromptBuilder @Inject constructor(
                     ),
                     category = PromptSectionCategory.CAPABILITIES,
                     priority = 60
+                ),
+                PlannedPromptSection(
+                    section = PromptSection(
+                        title = "Visual Operation Protocol",
+                        body = if (shouldIncludeVisualProtocol(runContext)) {
+                            listOf(
+                                "When performing phone control tasks with visual capability:",
+                                "1. Before acting, use `analyze_screenshot` when the UI tree is ambiguous or visually incomplete.",
+                                "2. After meaningful actions, use `visual_verify` to confirm navigation, toggle changes, submissions, or other high-stakes outcomes.",
+                                "3. If verification shows the action failed, re-read the UI tree, adjust the plan, and retry up to 3 times.",
+                                "4. Do not screenshot after every trivial action. Use vision selectively when it improves correctness."
+                            )
+                        } else {
+                            emptyList()
+                        }
+                    ),
+                    category = PromptSectionCategory.CAPABILITIES,
+                    priority = 61
                 )
             )
         )
@@ -125,6 +150,27 @@ class SystemPromptBuilder @Inject constructor(
             sectionTitles = sections.map { it.title },
             catalogSkillIds = skillCatalogPlan.catalogSkills.map { it.id },
             expandedSkillIds = emptyList()
+        )
+    }
+
+    private fun shouldIncludeVisualProtocol(runContext: AgentRunContext): Boolean {
+        if (!runContext.supportsVision) return false
+        return runContext.unlockedToolNames.any { it in PHONE_CONTROL_TOOL_NAMES }
+    }
+
+    private companion object {
+        val PHONE_CONTROL_TOOL_NAMES = setOf(
+            "read_current_ui",
+            "tap_ui_node",
+            "input_text",
+            "scroll_ui",
+            "press_global_action",
+            "launch_app",
+            "wait_for_ui",
+            "perform_ui_action",
+            "take_screenshot",
+            "analyze_screenshot",
+            "visual_verify"
         )
     }
 }

@@ -18,4 +18,10 @@ interface AgentTool {
     val parametersSchema: JsonObject
     fun isAvailable(config: AgentConfig, runContext: AgentRunContext): Boolean = true
     suspend fun execute(arguments: JsonObject, config: AgentConfig, runContext: AgentRunContext): String
+
+    suspend fun executeStructured(
+        arguments: JsonObject,
+        config: AgentConfig,
+        runContext: AgentRunContext
+    ): ToolResult = ToolResult.Text(execute(arguments, config, runContext))
 }

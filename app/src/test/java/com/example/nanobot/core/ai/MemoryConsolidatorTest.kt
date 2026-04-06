@@ -1,6 +1,9 @@
 package com.example.nanobot.core.ai
 
+import com.example.nanobot.core.memory.VisualMemoryExtractor
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.Attachment
+import com.example.nanobot.core.model.AttachmentType
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.MemoryFact
@@ -12,6 +15,7 @@ import com.example.nanobot.domain.repository.MemoryRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -25,7 +29,8 @@ class MemoryConsolidatorTest {
         val consolidator = MemoryConsolidator(
             memoryRepository = repository,
             chatRepository = FakeChatRepository(),
-            memoryPromptBuilder = MemoryPromptBuilder()
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(FakeChatRepository())
         )
 
         val result = consolidator.shouldConsolidate(
@@ -52,7 +57,8 @@ class MemoryConsolidatorTest {
         val consolidator = MemoryConsolidator(
             memoryRepository = repository,
             chatRepository = FakeChatRepository(),
-            memoryPromptBuilder = MemoryPromptBuilder()
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(FakeChatRepository())
         )
 
         val result = consolidator.shouldConsolidate(
@@ -72,7 +78,8 @@ class MemoryConsolidatorTest {
         val consolidator = MemoryConsolidator(
             memoryRepository = repository,
             chatRepository = FakeChatRepository(),
-            memoryPromptBuilder = MemoryPromptBuilder()
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(FakeChatRepository())
         )
 
         val result = consolidator.consolidate(
@@ -124,7 +131,8 @@ class MemoryConsolidatorTest {
         val consolidator = MemoryConsolidator(
             memoryRepository = repository,
             chatRepository = FakeChatRepository(),
-            memoryPromptBuilder = MemoryPromptBuilder()
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(FakeChatRepository())
         )
 
         val context = consolidator.buildMemoryContext("session-1")
@@ -152,7 +160,8 @@ class MemoryConsolidatorTest {
         val consolidator = MemoryConsolidator(
             memoryRepository = repository,
             chatRepository = FakeChatRepository(),
-            memoryPromptBuilder = MemoryPromptBuilder()
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(FakeChatRepository())
         )
 
         val result = consolidator.consolidate(
@@ -189,7 +198,12 @@ class MemoryConsolidatorTest {
                     {"updatedSummary":"The user now prefers Java for Android projects.","candidateFacts":["The user prefers Java for Android projects."]}
                 """.trimIndent()
             ),
-            memoryPromptBuilder = MemoryPromptBuilder()
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(ParameterizedChatRepository(
+                """
+                    {"updatedSummary":"The user now prefers Java for Android projects.","candidateFacts":["The user prefers Java for Android projects."]}
+                """.trimIndent()
+            ))
         )
 
         val result = consolidator.consolidate(
@@ -233,7 +247,25 @@ class MemoryConsolidatorTest {
                     }
                 """.trimIndent()
             ),
-            memoryPromptBuilder = MemoryPromptBuilder()
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(ParameterizedChatRepository(
+                """
+                    {
+                      "updatedSummary":"The user is evaluating Kotlin for Android work.",
+                      "summaryConfidence":0.91,
+                      "summaryEvidenceExcerpt":"I am building an Android assistant and I prefer Kotlin.",
+                      "summarySourceMessageIds":["msg-1","msg-3"],
+                      "structuredFacts":[
+                        {
+                          "fact":"The user prefers Kotlin.",
+                          "confidence":0.88,
+                          "evidenceExcerpt":"Please remember that I prefer Kotlin.",
+                          "sourceMessageIds":["msg-3"]
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            ))
         )
 
         val result = consolidator.consolidate(
@@ -252,6 +284,156 @@ class MemoryConsolidatorTest {
         assertEquals(listOf("msg-1", "msg-3"), repository.summary!!.provenance.messageIds)
         assertEquals(0.88f, repository.facts.single().confidence)
         assertEquals(listOf("msg-3"), repository.facts.single().provenance.messageIds)
+    }
+
+    @Test
+    fun consolidateExtractsVisualFactsFromLatestScreenshotAttachment() = runTest {
+        val repository = FakeMemoryRepository()
+        val chatRepository = SequencedChatRepository(
+            responses = listOf(
+                ProviderChatResult(
+                    content = """
+                        {"updatedSummary":"The user is reviewing app settings.","candidateFacts":[]}
+                    """.trimIndent()
+                ),
+                ProviderChatResult(
+                    content = """
+                        [{"fact":"The Settings app shows Wi-Fi is enabled.","confidence":0.82}]
+                    """.trimIndent()
+                )
+            )
+        )
+        val consolidator = MemoryConsolidator(
+            memoryRepository = repository,
+            chatRepository = chatRepository,
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(chatRepository)
+        )
+
+        val result = consolidator.consolidate(
+            sessionId = "session-visual",
+            history = listOf(
+                ChatMessage(id = "msg-1", sessionId = "session-visual", role = MessageRole.USER, content = "Check whether Wi-Fi is on."),
+                ChatMessage(id = "msg-2", sessionId = "session-visual", role = MessageRole.ASSISTANT, content = "I'll inspect the current screen."),
+                ChatMessage(
+                    id = "msg-3",
+                    sessionId = "session-visual",
+                    role = MessageRole.TOOL,
+                    content = "Screenshot captured.",
+                    toolName = "take_screenshot",
+                    attachments = listOf(
+                        Attachment(
+                            id = "att-1",
+                            type = AttachmentType.IMAGE,
+                            displayName = "screen.jpg",
+                            mimeType = "image/jpeg",
+                            sizeBytes = 3,
+                            localPath = "attachments/images/screen.jpg"
+                        )
+                    )
+                ),
+                ChatMessage(id = "msg-4", sessionId = "session-visual", role = MessageRole.ASSISTANT, content = "The screenshot is ready.")
+            ),
+            config = AgentConfig(enableMemory = true, enableVisualMemory = true, model = "gpt-4o-mini")
+        )
+
+        assertTrue(result)
+        assertTrue(repository.facts.any { it.fact == "The Settings app shows Wi-Fi is enabled." })
+        val visualFact = repository.facts.first { it.fact == "The Settings app shows Wi-Fi is enabled." }
+        assertEquals("visual_extraction", visualFact.provenance.sourceKind)
+        assertEquals("visual_memory_extractor", visualFact.provenance.extractor)
+        assertEquals(listOf("msg-3"), visualFact.provenance.messageIds)
+        assertTrue(chatRepository.requests.last().messages.last().attachments.isNotEmpty())
+    }
+
+    @Test
+    fun consolidateSkipsVisualExtractionWhenVisualMemoryDisabled() = runTest {
+        val repository = FakeMemoryRepository()
+        val chatRepository = SequencedChatRepository(
+            responses = listOf(
+                ProviderChatResult(content = "{" + "\"updatedSummary\":\"Summary\",\"candidateFacts\":[]}"),
+                ProviderChatResult(content = "[{\"fact\":\"Should not be used\",\"confidence\":0.9}]")
+            )
+        )
+        val consolidator = MemoryConsolidator(
+            memoryRepository = repository,
+            chatRepository = chatRepository,
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(chatRepository)
+        )
+
+        consolidator.consolidate(
+            sessionId = "session-visual-disabled",
+            history = screenshotHistory("session-visual-disabled"),
+            config = AgentConfig(enableMemory = true, enableVisualMemory = false, model = "gpt-4o-mini")
+        )
+
+        assertEquals(1, chatRepository.requests.size)
+        assertTrue(repository.facts.none { it.provenance.sourceKind == "visual_extraction" })
+    }
+
+    @Test
+    fun consolidateSkipsDuplicateVisualExtractionForSameScreenshotMessage() = runTest {
+        val repository = FakeMemoryRepository().apply {
+            facts += MemoryFact(
+                id = "visual-fact-existing",
+                fact = "The Settings app shows Wi-Fi is enabled.",
+                sourceSessionId = "session-visual",
+                createdAt = 1L,
+                updatedAt = 2L,
+                confidence = 0.8f,
+                provenance = com.example.nanobot.core.model.MemoryProvenance(
+                    messageIds = listOf("msg-3"),
+                    sourceKind = "visual_extraction",
+                    extractor = "visual_memory_extractor"
+                )
+            )
+        }
+        val chatRepository = SequencedChatRepository(
+            responses = listOf(
+                ProviderChatResult(content = "{" + "\"updatedSummary\":\"Summary\",\"candidateFacts\":[]}")
+            )
+        )
+        val consolidator = MemoryConsolidator(
+            memoryRepository = repository,
+            chatRepository = chatRepository,
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(chatRepository)
+        )
+
+        consolidator.consolidate(
+            sessionId = "session-visual",
+            history = screenshotHistory("session-visual"),
+            config = AgentConfig(enableMemory = true, enableVisualMemory = true, model = "gpt-4o-mini")
+        )
+
+        assertEquals(1, chatRepository.requests.size)
+        assertEquals(1, repository.facts.count { it.provenance.sourceKind == "visual_extraction" })
+    }
+
+    @Test
+    fun consolidateFiltersOutLowConfidenceVisualFacts() = runTest {
+        val repository = FakeMemoryRepository()
+        val chatRepository = SequencedChatRepository(
+            responses = listOf(
+                ProviderChatResult(content = "{" + "\"updatedSummary\":\"Summary\",\"candidateFacts\":[]}"),
+                ProviderChatResult(content = "[{\"fact\":\"Low confidence fact\",\"confidence\":0.4}]")
+            )
+        )
+        val consolidator = MemoryConsolidator(
+            memoryRepository = repository,
+            chatRepository = chatRepository,
+            memoryPromptBuilder = MemoryPromptBuilder(),
+            visualMemoryExtractor = VisualMemoryExtractor(chatRepository)
+        )
+
+        consolidator.consolidate(
+            sessionId = "session-visual-low",
+            history = screenshotHistory("session-visual-low"),
+            config = AgentConfig(enableMemory = true, enableVisualMemory = true, model = "gpt-4o-mini")
+        )
+
+        assertTrue(repository.facts.none { it.fact == "Low confidence fact" })
     }
 
     private class FakeMemoryRepository : MemoryRepository {
@@ -307,5 +489,42 @@ class MemoryConsolidatorTest {
         override suspend fun completeChat(request: LlmChatRequest, config: AgentConfig): ProviderChatResult {
             return ProviderChatResult(content = responseText)
         }
+    }
+
+    private class SequencedChatRepository(
+        private val responses: List<ProviderChatResult>
+    ) : ChatRepository {
+        val requests = mutableListOf<LlmChatRequest>()
+        private var index = 0
+
+        override suspend fun completeChat(request: LlmChatRequest, config: AgentConfig): ProviderChatResult {
+            requests += request
+            return responses.getOrElse(index++) { responses.last() }
+        }
+    }
+
+    private fun screenshotHistory(sessionId: String): List<ChatMessage> {
+        return listOf(
+            ChatMessage(id = "msg-1", sessionId = sessionId, role = MessageRole.USER, content = "Check whether Wi-Fi is on."),
+            ChatMessage(id = "msg-2", sessionId = sessionId, role = MessageRole.ASSISTANT, content = "I'll inspect the current screen."),
+            ChatMessage(
+                id = "msg-3",
+                sessionId = sessionId,
+                role = MessageRole.TOOL,
+                content = "Screenshot captured.",
+                toolName = "take_screenshot",
+                attachments = listOf(
+                    Attachment(
+                        id = "att-1",
+                        type = AttachmentType.IMAGE,
+                        displayName = "screen.jpg",
+                        mimeType = "image/jpeg",
+                        sizeBytes = 3,
+                        localPath = "attachments/images/screen.jpg"
+                    )
+                )
+            ),
+            ChatMessage(id = "msg-4", sessionId = sessionId, role = MessageRole.ASSISTANT, content = "The screenshot is ready.")
+        )
     }
 }

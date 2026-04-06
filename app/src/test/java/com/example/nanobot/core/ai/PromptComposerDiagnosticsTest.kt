@@ -1,6 +1,7 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.ai.provider.ProviderRegistry
+import com.example.nanobot.core.memory.VisualMemoryExtractor
 import com.example.nanobot.core.mcp.McpRefreshResult
 import com.example.nanobot.core.mcp.McpRegistry
 import com.example.nanobot.core.mcp.McpServerDefinition
@@ -53,7 +54,12 @@ class PromptComposerDiagnosticsTest {
                 skillRepository = FakeSkillRepository(),
                 mcpRegistry = FakeMcpRegistry()
             ),
-            memoryConsolidator = MemoryConsolidator(memoryRepository, FakeChatRepository(), MemoryPromptBuilder()),
+            memoryConsolidator = MemoryConsolidator(
+                memoryRepository,
+                FakeChatRepository(),
+                MemoryPromptBuilder(),
+                VisualMemoryExtractor(FakeChatRepository())
+            ),
             memoryExposurePlanner = MemoryExposurePlanner(memoryRepository),
             historyExposurePlanner = HistoryExposurePlanner(),
             promptDiagnosticsStore = diagnosticsStore

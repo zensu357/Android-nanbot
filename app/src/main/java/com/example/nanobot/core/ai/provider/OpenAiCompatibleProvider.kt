@@ -5,6 +5,7 @@ import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.ProviderChatResult
 import com.example.nanobot.core.model.ToolCallRequest
+import com.example.nanobot.core.network.HttpClientFactory
 import com.example.nanobot.core.network.api.LlmApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import javax.inject.Inject
@@ -18,14 +19,14 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.Retrofit
 import retrofit2.HttpException
 
 class OpenAiCompatibleProvider @Inject constructor(
     private val requestSanitizer: ProviderRequestSanitizer,
-    private val attachmentStore: AttachmentStore
+    private val attachmentStore: AttachmentStore,
+    private val httpClientFactory: HttpClientFactory
 ) {
     suspend fun completeChat(
         config: AgentConfig,
@@ -80,12 +81,9 @@ class OpenAiCompatibleProvider @Inject constructor(
         val loggingInterceptor = okhttp3.logging.HttpLoggingInterceptor().apply {
             level = okhttp3.logging.HttpLoggingInterceptor.Level.BODY
         }
-        val client = OkHttpClient.Builder()
-            .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-            .addInterceptor(loggingInterceptor)
-            .addInterceptor { chain ->
+        val client = httpClientFactory.llmClient {
+            addInterceptor(loggingInterceptor)
+            addInterceptor { chain ->
                 val builder: Request.Builder = chain.request().newBuilder()
                     .header("Content-Type", "application/json")
 
@@ -100,7 +98,7 @@ class OpenAiCompatibleProvider @Inject constructor(
 
                 chain.proceed(builder.build())
             }
-            .build()
+        }
 
         return Retrofit.Builder()
             .baseUrl(route.effectiveBaseUrl.cleanCustomBaseUrl())

@@ -1,6 +1,7 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.model.AgentRunContext
 import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.testutil.FakeSkillRepository
 import kotlin.test.Test
@@ -62,5 +63,32 @@ class SystemPromptBuilderTest {
         assertTrue(prompt.contains("## Memory Context"))
         assertTrue(prompt.contains("..."))
         assertFalse(prompt.length > 2600)
+    }
+
+    @Test
+    fun includesVisualOperationProtocolForVisionCapablePhoneControlRuns() {
+        val builder = SystemPromptBuilder(
+            PromptPresetCatalog(),
+            FakeSkillRepository(),
+            ToolAccessPolicy(),
+            SkillSelector(),
+            SkillPromptAssembler(),
+            ContextBudgetPlanner()
+        )
+
+        val prompt = kotlinx.coroutines.runBlocking {
+            builder.build(
+                config = AgentConfig(),
+                memoryContext = null,
+                runContext = AgentRunContext.root(
+                    sessionId = "session-1",
+                    supportsVision = true,
+                    unlockedToolNames = setOf("take_screenshot")
+                )
+            )
+        }
+
+        assertTrue(prompt.contains("## Visual Operation Protocol"))
+        assertTrue(prompt.contains("When performing phone control tasks with visual capability:"))
     }
 }

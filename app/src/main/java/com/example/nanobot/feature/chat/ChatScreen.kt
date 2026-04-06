@@ -1,11 +1,15 @@
 package com.example.nanobot.feature.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -25,13 +29,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,13 +66,18 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.nanobot.core.model.Attachment
 import com.example.nanobot.core.model.AttachmentType
 import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.core.skills.ActivatedSkillSource
+import com.example.nanobot.core.voice.VoiceState
+import com.example.nanobot.feature.chat.ToolMessageKind
+import com.example.nanobot.feature.chat.presentToolMessage
+import com.example.nanobot.feature.chat.toolSummaryText
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(
     state: ChatUiState,
@@ -80,14 +89,30 @@ fun ChatScreen(
     onDeactivateSkill: (String) -> Unit,
     onSendClick: () -> Unit,
     onCancelClick: () -> Unit,
+    onToggleVoiceInput: () -> Unit,
+    onStartVoiceInput: () -> Unit,
+    onFinishVoiceInput: () -> Unit,
+    onStopVoiceOutput: () -> Unit,
+    onVoicePermissionDenied: () -> Unit,
     onToggleToolMessage: (String) -> Unit,
     onOpenSessions: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let(onAttachImage)
+    }
+
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            onToggleVoiceInput()
+        } else {
+            onVoicePermissionDenied()
+        }
     }
 
     val fileLauncher = rememberLauncherForActivityResult(
@@ -122,7 +147,7 @@ fun ChatScreen(
                 },
                 actions = {
                     IconButton(onClick = onOpenSessions) {
-                        Icon(imageVector = Icons.Default.List, contentDescription = "Sessions")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "Sessions")
                     }
                     Box {
                         IconButton(onClick = { showSkillMenu = true }) {
@@ -212,6 +237,18 @@ fun ChatScreen(
                     text = status,
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            state.voiceStatusHint?.let { hint ->
+                Text(
+                    text = hint,
+                    color = if (state.voiceState == VoiceState.LISTENING) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
 
@@ -348,9 +385,73 @@ fun ChatScreen(
                     value = state.input,
                     onValueChange = onMessageChange,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ask Nanobot anything...") },
+                    placeholder = {
+                        Text(
+                            when (state.voiceState) {
+                                VoiceState.LISTENING -> "Listening for your message..."
+                                VoiceState.PROCESSING -> "Transcribing voice input..."
+                                else -> "Ask Nanobot anything..."
+                            }
+                        )
+                    },
                     maxLines = 6
                 )
+
+                if (state.voiceInputEnabled) {
+                    Box(
+                        modifier = Modifier
+                            .padding(bottom = 4.dp)
+                            .combinedClickable(
+                                enabled = !state.isCancelling,
+                                onClick = {
+                                    if (state.voiceState == VoiceState.SPEAKING) {
+                                        onStopVoiceOutput()
+                                    } else if (state.voiceState == VoiceState.LISTENING || state.voiceState == VoiceState.PROCESSING) {
+                                        onFinishVoiceInput()
+                                    } else {
+                                        val granted = ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.RECORD_AUDIO
+                                        ) == PackageManager.PERMISSION_GRANTED
+                                        if (granted) {
+                                            onToggleVoiceInput()
+                                        } else {
+                                            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    }
+                                },
+                                onLongClick = {
+                                    val granted = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (granted) {
+                                        onStartVoiceInput()
+                                    } else {
+                                        recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
+                            )
+                    ) {
+                        Icon(
+                            imageVector = when (state.voiceState) {
+                                VoiceState.LISTENING -> Icons.Default.Person
+                                VoiceState.PROCESSING -> Icons.Default.Build
+                                VoiceState.SPEAKING -> Icons.Default.Close
+                                VoiceState.IDLE -> Icons.Default.Person
+                            },
+                            contentDescription = when (state.voiceState) {
+                                VoiceState.SPEAKING -> "Stop voice output"
+                                else -> "Voice input"
+                            },
+                            tint = if (state.voiceState == VoiceState.LISTENING) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                    }
+                }
 
                 IconButton(
                     onClick = if (state.isRunning) onCancelClick else onSendClick,
@@ -364,7 +465,7 @@ fun ChatScreen(
                     } else if (state.isSending) {
                         CircularProgressIndicator(modifier = Modifier.padding(2.dp))
                     } else {
-                        Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                     }
                 }
             }

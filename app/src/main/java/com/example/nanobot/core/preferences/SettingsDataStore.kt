@@ -7,12 +7,14 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.ProviderType
+import com.example.nanobot.core.model.VoiceEngineType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
 import javax.inject.Inject
@@ -61,6 +63,7 @@ class SettingsDataStore @Inject constructor(
                 reasoningEffort = preferences[REASONING_EFFORT],
                 enableTools = preferences[ENABLE_TOOLS] ?: DEFAULT_ENABLE_TOOLS,
                 enableMemory = preferences[ENABLE_MEMORY] ?: DEFAULT_ENABLE_MEMORY,
+                enableVisualMemory = preferences[ENABLE_VISUAL_MEMORY] ?: DEFAULT_ENABLE_VISUAL_MEMORY,
                 enableBackgroundWork = preferences[ENABLE_BACKGROUND_WORK] ?: DEFAULT_ENABLE_BACKGROUND_WORK,
                 webSearchApiKey = preferences[WEB_SEARCH_API_KEY].orEmpty(),
                 webProxy = preferences[WEB_PROXY].orEmpty(),
@@ -71,7 +74,12 @@ class SettingsDataStore @Inject constructor(
                     ?.filter { it.isNotBlank() }
                     .orEmpty(),
                 systemPrompt = preferences[SYSTEM_PROMPT] ?: DEFAULT_PROMPT,
-                temperature = preferences[TEMPERATURE] ?: 0.2
+                temperature = preferences[TEMPERATURE] ?: 0.2,
+                voiceInputEnabled = preferences[VOICE_INPUT_ENABLED] ?: false,
+                voiceAutoPlay = preferences[VOICE_AUTO_PLAY] ?: false,
+                voiceEngine = VoiceEngineType.from(preferences[VOICE_ENGINE]),
+                ttsSpeed = preferences[TTS_SPEED] ?: 1.0f,
+                ttsLanguage = preferences[TTS_LANGUAGE] ?: "zh-CN"
             )
         }
 
@@ -119,6 +127,7 @@ class SettingsDataStore @Inject constructor(
             config.reasoningEffort?.let { preferences[REASONING_EFFORT] = it } ?: preferences.remove(REASONING_EFFORT)
             preferences[ENABLE_TOOLS] = config.enableTools
             preferences[ENABLE_MEMORY] = config.enableMemory
+            preferences[ENABLE_VISUAL_MEMORY] = config.enableVisualMemory
             preferences[ENABLE_BACKGROUND_WORK] = config.enableBackgroundWork
             preferences[WEB_SEARCH_API_KEY] = config.webSearchApiKey
             preferences[WEB_PROXY] = config.webProxy
@@ -127,6 +136,11 @@ class SettingsDataStore @Inject constructor(
             preferences[ENABLED_SKILL_IDS] = config.enabledSkillIds.joinToString(SKILL_ID_SEPARATOR)
             preferences[SYSTEM_PROMPT] = config.systemPrompt
             preferences[TEMPERATURE] = config.temperature
+            preferences[VOICE_INPUT_ENABLED] = config.voiceInputEnabled
+            preferences[VOICE_AUTO_PLAY] = config.voiceAutoPlay
+            preferences[VOICE_ENGINE] = config.voiceEngine.wireValue
+            preferences[TTS_SPEED] = config.ttsSpeed
+            preferences[TTS_LANGUAGE] = config.ttsLanguage
         }
     }
 
@@ -189,6 +203,7 @@ class SettingsDataStore @Inject constructor(
         const val DEFAULT_MEMORY_WINDOW = 100
         const val DEFAULT_ENABLE_TOOLS = true
         const val DEFAULT_ENABLE_MEMORY = true
+        const val DEFAULT_ENABLE_VISUAL_MEMORY = false
         const val DEFAULT_ENABLE_BACKGROUND_WORK = true
         const val DEFAULT_RESTRICT_TO_WORKSPACE = false
         const val DEFAULT_PRESET = "assistant_default"
@@ -205,6 +220,7 @@ class SettingsDataStore @Inject constructor(
         val REASONING_EFFORT = stringPreferencesKey("reasoning_effort")
         val ENABLE_TOOLS = booleanPreferencesKey("enable_tools")
         val ENABLE_MEMORY = booleanPreferencesKey("enable_memory")
+        val ENABLE_VISUAL_MEMORY = booleanPreferencesKey("enable_visual_memory")
         val ENABLE_BACKGROUND_WORK = booleanPreferencesKey("enable_background_work")
         val WEB_SEARCH_API_KEY = stringPreferencesKey("web_search_api_key")
         val WEB_PROXY = stringPreferencesKey("web_proxy")
@@ -216,5 +232,10 @@ class SettingsDataStore @Inject constructor(
         val TRUST_PROJECT_SKILLS = booleanPreferencesKey("trust_project_skills")
         val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
         val TEMPERATURE = doublePreferencesKey("temperature")
+        val VOICE_INPUT_ENABLED = booleanPreferencesKey("voice_input_enabled")
+        val VOICE_AUTO_PLAY = booleanPreferencesKey("voice_auto_play")
+        val VOICE_ENGINE = stringPreferencesKey("voice_engine")
+        val TTS_SPEED = floatPreferencesKey("tts_speed")
+        val TTS_LANGUAGE = stringPreferencesKey("tts_language")
     }
 }

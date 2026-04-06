@@ -15,6 +15,7 @@ import com.example.nanobot.core.model.MemorySummary
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.core.model.ProviderChatResult
 import com.example.nanobot.core.model.ToolCallRequest
+import com.example.nanobot.core.memory.VisualMemoryExtractor
 import com.example.nanobot.core.subagent.SubagentCoordinator
 import com.example.nanobot.core.tools.AgentTool
 import com.example.nanobot.core.tools.ToolAccessCategory
@@ -60,7 +61,12 @@ class AgentOrchestratorIntegrationTest {
         val promptComposer = PromptComposer(
             systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner()),
             runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry),
-            memoryConsolidator = MemoryConsolidator(FakeMemoryRepository(), chatRepository, MemoryPromptBuilder()),
+            memoryConsolidator = MemoryConsolidator(
+                FakeMemoryRepository(),
+                chatRepository,
+                MemoryPromptBuilder(),
+                VisualMemoryExtractor(chatRepository)
+            ),
             memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
             historyExposurePlanner = HistoryExposurePlanner(),
             promptDiagnosticsStore = PromptDiagnosticsStore()
@@ -104,7 +110,12 @@ class AgentOrchestratorIntegrationTest {
         val promptComposer = PromptComposer(
             systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner()),
             runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry),
-            memoryConsolidator = MemoryConsolidator(FakeMemoryRepository(), chatRepository, MemoryPromptBuilder()),
+            memoryConsolidator = MemoryConsolidator(
+                FakeMemoryRepository(),
+                chatRepository,
+                MemoryPromptBuilder(),
+                VisualMemoryExtractor(chatRepository)
+            ),
             memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
             historyExposurePlanner = HistoryExposurePlanner(),
             promptDiagnosticsStore = PromptDiagnosticsStore()
@@ -150,7 +161,7 @@ class AgentOrchestratorIntegrationTest {
                     ProviderChatResult(content = "Child completed the delegated report and saved the findings.")
                 }
 
-                latestMessage.role == "tool" && latestMessage.name == "delegate_task" -> {
+                latestMessage.role == "tool" && latestMessage.toolCallId == "delegate-1" -> {
                     ProviderChatResult(content = "I reviewed the child summary and kept the parent session active.")
                 }
 
@@ -197,11 +208,11 @@ class AgentOrchestratorIntegrationTest {
                     )
                 }
 
-                latestMessage.role == "tool" && latestMessage.name == "write_file" -> {
+                latestMessage.role == "tool" && latestMessage.toolCallId == "child-write-1" -> {
                     ProviderChatResult(content = "Child completed the delegated report and saved the findings.")
                 }
 
-                latestMessage.role == "tool" && latestMessage.name == "delegate_task" -> {
+                latestMessage.role == "tool" && latestMessage.toolCallId == "delegate-2" -> {
                     ProviderChatResult(content = "The delegated report has been saved and summarized.")
                 }
 

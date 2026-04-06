@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 class AttachmentStore @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    private val dataUrlPattern = Regex("""^data:([^;]+);base64,(.+)$""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val maxPreparedBytes = 1_500_000L
     private val maxImageDimension = 1_568
 
@@ -47,6 +48,32 @@ class AttachmentStore @Inject constructor(
             displayName = metadata.displayName ?: destination.name,
             mimeType = mimeType,
             sizeBytes = if (sizeBytes > 0L) sizeBytes else metadata.sizeBytes,
+            localPath = relativePath
+        )
+    }
+
+    suspend fun persistDataUrlImage(dataUrl: String, displayName: String = ""): Attachment = withContext(Dispatchers.IO) {
+        val match = dataUrlPattern.matchEntire(dataUrl.trim())
+            ?: throw IllegalArgumentException("Unsupported data URL image payload.")
+        val mimeType = match.groupValues[1].trim().ifBlank { "image/jpeg" }
+        require(mimeType.startsWith("image/")) { "Only image data URLs are supported right now." }
+
+        val extension = mimeType.substringAfter('/', "jpg")
+            .substringBefore(';')
+            .ifBlank { "jpg" }
+        val fileName = "${UUID.randomUUID()}.$extension"
+        val relativePath = "attachments/images/$fileName"
+        val destination = File(context.filesDir, relativePath).apply {
+            parentFile?.mkdirs()
+        }
+        val bytes = Base64.decode(match.groupValues[2], Base64.DEFAULT)
+        destination.writeBytes(bytes)
+
+        Attachment(
+            type = AttachmentType.IMAGE,
+            displayName = displayName.trim().takeIf { it.isNotBlank() } ?: fileName,
+            mimeType = mimeType,
+            sizeBytes = destination.length(),
             localPath = relativePath
         )
     }

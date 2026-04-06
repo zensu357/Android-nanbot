@@ -55,7 +55,10 @@ class DelegateTaskTool @Inject constructor(
                 task = task,
                 title = title,
                 subagentDepth = runContext.subagentDepth,
-                maxSubagentDepth = runContext.maxSubagentDepth
+                maxSubagentDepth = runContext.maxSubagentDepth,
+                allowedToolNames = runContext.allowedToolNames,
+                unlockedToolNames = runContext.unlockedToolNames,
+                supportsVision = runContext.supportsVision
             ),
             config = config
         )

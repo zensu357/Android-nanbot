@@ -102,6 +102,37 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun autoSpeakFilterSkipsProtectedOrToolCallAssistantMessages() {
+        val protectedAssistant = ChatMessage(
+            sessionId = "session-1",
+            role = MessageRole.ASSISTANT,
+            content = "<skill_content>",
+            protectedContext = true
+        )
+        val toolCallAssistant = ChatMessage(
+            sessionId = "session-1",
+            role = MessageRole.ASSISTANT,
+            content = null,
+            toolCallsJson = "[]"
+        )
+        val normalAssistant = ChatMessage(
+            sessionId = "session-1",
+            role = MessageRole.ASSISTANT,
+            content = "Regular reply"
+        )
+
+        val candidates = listOf(protectedAssistant, toolCallAssistant, normalAssistant)
+        val selected = candidates.lastOrNull { message ->
+            message.role == MessageRole.ASSISTANT &&
+                !message.protectedContext &&
+                message.toolCallsJson.isNullOrBlank() &&
+                !message.content.isNullOrBlank()
+        }
+
+        assertEquals("Regular reply", selected?.content)
+    }
+
+    @Test
     fun activeSkillUiStateCarriesActivationSource() {
         val userSkill = ActiveSkillUiState(
             name = "release-notes",

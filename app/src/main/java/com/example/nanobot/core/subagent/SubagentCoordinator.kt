@@ -22,7 +22,10 @@ class SubagentCoordinator @Inject constructor(
             sessionId = request.parentSessionId,
             parentSessionId = null,
             subagentDepth = request.subagentDepth,
-            maxSubagentDepth = request.maxSubagentDepth
+            maxSubagentDepth = request.maxSubagentDepth,
+            allowedToolNames = request.allowedToolNames,
+            unlockedToolNames = request.unlockedToolNames,
+            supportsVision = request.supportsVision
         )
         if (!parentRunContext.canDelegate()) {
             return SubagentResult(
