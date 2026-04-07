@@ -24,7 +24,7 @@
 
 <p align="center">
   <a href="https://github.com/HKUDS/nanobot">HKUDS nanobot</a> agent 的 Android 原生复刻项目。<br/>
-  目标不是包装一个 Python 运行时，而是在 Android 上实现完整的本地 Agent 核心能力。
+  目标不是包装一个 Python 解释器，而是在 Android 上实现完整的本地 Agent 核心能力。
 </p>
 
 <p align="center">
