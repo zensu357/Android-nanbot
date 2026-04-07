@@ -70,7 +70,8 @@ class ChatViewModel @Inject constructor(
                 updateState {
                     copy(
                         messages = messageList.filterNot { it.isHiddenSkillActivationMessage() },
-                        sessionTitle = currentSession.value?.title ?: sessionTitle
+                        sessionTitle = currentSession.value?.title ?: sessionTitle,
+                        isLoadingHistory = false
                     )
                 }
             }
@@ -85,7 +86,11 @@ class ChatViewModel @Inject constructor(
                 val sessionId = session?.id
                 val sessionChanged = lastSessionId != null && sessionId != lastSessionId
                 lastSessionId = sessionId
-                updateState { applySessionSelection(session?.title ?: "New Chat", sessionChanged) }
+                updateState {
+                    applySessionSelection(session?.title ?: "New Chat", sessionChanged).copy(
+                        isLoadingHistory = session != null
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -134,6 +139,7 @@ class ChatViewModel @Inject constructor(
                 updateState {
                     copy(
                         availableSkills = enabled,
+                        modelName = config.model.ifBlank { null },
                         voiceInputEnabled = config.voiceInputEnabled,
                         voiceAutoPlayEnabled = config.voiceAutoPlay,
                         activeSkills = activeSkills.map { active ->

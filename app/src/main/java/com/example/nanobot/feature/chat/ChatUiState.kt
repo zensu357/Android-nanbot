@@ -20,9 +20,11 @@ data class ActiveSkillUiState(
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val sessionTitle: String = "New Chat",
+    val modelName: String? = null,
     val input: String = "",
     val pendingAttachments: List<Attachment> = emptyList(),
     val expandedToolMessageIds: Set<String> = emptySet(),
+    val isLoadingHistory: Boolean = false,
     val isSending: Boolean = false,
     val isRunning: Boolean = false,
     val isCancelling: Boolean = false,

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
 package com.example.nanobot.feature.chat
 
 import android.Manifest
@@ -6,78 +8,79 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.nanobot.core.model.Attachment
 import com.example.nanobot.core.model.AttachmentType
-import com.example.nanobot.core.model.ChatMessage
-import com.example.nanobot.core.model.MessageRole
+import com.example.nanobot.core.model.ChatSession
 import com.example.nanobot.core.skills.ActivatedSkillSource
 import com.example.nanobot.core.voice.VoiceState
-import com.example.nanobot.feature.chat.ToolMessageKind
-import com.example.nanobot.feature.chat.presentToolMessage
-import com.example.nanobot.feature.chat.toolSummaryText
+import com.example.nanobot.ui.components.AnimatedTypingIndicator
+import com.example.nanobot.ui.components.GlassCard
+import com.example.nanobot.ui.components.NanobotInputBar
+import com.example.nanobot.ui.components.NanobotMessageBubble
+import com.example.nanobot.ui.components.NanobotTopBar
+import com.example.nanobot.ui.components.shimmerEffect
+import com.example.nanobot.ui.theme.NanobotShapes
+import com.example.nanobot.ui.theme.NanobotTheme
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     state: ChatUiState,
@@ -95,16 +98,27 @@ fun ChatScreen(
     onStopVoiceOutput: () -> Unit,
     onVoicePermissionDenied: () -> Unit,
     onToggleToolMessage: (String) -> Unit,
-    onOpenSessions: () -> Unit,
-    onOpenSettings: () -> Unit
+    sessions: List<ChatSession>,
+    currentSessionId: String?,
+    onCreateSession: () -> Unit,
+    onSelectSession: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenMemory: () -> Unit,
+    onOpenTools: () -> Unit,
+    sessionsErrorMessage: String? = null
 ) {
+    val ext = NanobotTheme.extendedColors
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val drawerState = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
+    val listState = rememberLazyListState()
+
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let(onAttachImage)
     }
-
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -114,17 +128,14 @@ fun ChatScreen(
             onVoicePermissionDenied()
         }
     }
-
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let(onAttachFile)
     }
 
-    var showAttachMenu by remember { mutableStateOf(false) }
+    var showAttachSheet by remember { mutableStateOf(false) }
     var showSkillMenu by remember { mutableStateOf(false) }
-
-    val listState = rememberLazyListState()
 
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
@@ -132,582 +143,635 @@ fun ChatScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Nanobot Chat")
-                        Text(
-                            text = state.sessionTitle,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+                drawerShape = NanobotShapes.Drawer
+            ) {
+                SessionDrawer(
+                    sessions = sessions,
+                    currentSessionId = currentSessionId,
+                    errorMessage = sessionsErrorMessage,
+                    onCreateSession = {
+                        onCreateSession()
+                        scope.launch { drawerState.close() }
+                    },
+                    onSelectSession = { id ->
+                        onSelectSession(id)
+                        scope.launch { drawerState.close() }
+                    },
+                    onDeleteSession = onDeleteSession,
+                    onOpenSettings = {
+                        scope.launch { drawerState.close() }
+                        onOpenSettings()
+                    },
+                    onOpenMemory = {
+                        scope.launch { drawerState.close() }
+                        onOpenMemory()
+                    },
+                    onOpenTools = {
+                        scope.launch { drawerState.close() }
+                        onOpenTools()
                     }
-                },
-                actions = {
-                    IconButton(onClick = onOpenSessions) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "Sessions")
-                    }
-                    Box {
-                        IconButton(onClick = { showSkillMenu = true }) {
-                            Icon(imageVector = Icons.Default.Build, contentDescription = "Activate Skill")
-                        }
-                        DropdownMenu(
-                            expanded = showSkillMenu,
-                            onDismissRequest = { showSkillMenu = false }
-                        ) {
-                            if (state.availableSkills.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("No enabled skills") },
-                                    onClick = { showSkillMenu = false }
-                                )
-                            } else {
-                                state.availableSkills.forEach { skill ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text(skill.title)
-                                                Text(
-                                                    text = skill.description,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        },
-                                        onClick = {
-                                            showSkillMenu = false
-                                            onActivateSkill(skill.name)
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                }
-            )
+                )
+            }
         }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.background)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (state.messages.isEmpty()) {
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(paddingValues)
+            ) {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Start with a prompt to build the first session.")
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(state.messages, key = { it.id }) { message ->
-                        MessageBubble(
-                            message = message,
-                            expanded = message.id in state.expandedToolMessageIds,
-                            onToggleToolMessage = onToggleToolMessage
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(ext.neonGlow.copy(alpha = 0.18f), Color.Transparent)
+                            )
                         )
-                    }
-                }
-            }
-
-            state.errorMessage?.let { errorText ->
-                Text(
-                    text = errorText,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
                 )
-            }
 
-            state.statusText?.let { status ->
-                Text(
-                    text = status,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-
-            state.voiceStatusHint?.let { hint ->
-                Text(
-                    text = hint,
-                    color = if (state.voiceState == VoiceState.LISTENING) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-
-            if (state.activeSkills.isNotEmpty()) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        state.activeSkills.forEach { skill ->
-                            val sourceColor = when (skill.source) {
-                                ActivatedSkillSource.USER -> MaterialTheme.colorScheme.tertiaryContainer
-                                ActivatedSkillSource.MODEL -> MaterialTheme.colorScheme.primaryContainer
-                            }
-                            val sourceContentColor = when (skill.source) {
-                                ActivatedSkillSource.USER -> MaterialTheme.colorScheme.onTertiaryContainer
-                                ActivatedSkillSource.MODEL -> MaterialTheme.colorScheme.onPrimaryContainer
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(999.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = skill.title,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                Column(modifier = Modifier.fillMaxSize()) {
+                    NanobotTopBar(
+                        title = state.sessionTitle,
+                        subtitle = state.activeToolName?.let { "Running $it" }
+                            ?: if (state.activeSkills.isNotEmpty()) "${state.activeSkills.size} skill${if (state.activeSkills.size == 1) "" else "s"} active" else null,
+                        badgeText = state.modelName,
+                        navigationIcon = Icons.Default.Menu,
+                        navigationContentDescription = "Sessions",
+                        onNavigationClick = { scope.launch { drawerState.open() } },
+                        actions = {
+                            Box {
+                                IconButton(onClick = { showSkillMenu = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Build,
+                                        contentDescription = "Activate Skill",
+                                        tint = ext.textSecondary
                                     )
-                                    Surface(
-                                        shape = RoundedCornerShape(999.dp),
-                                        color = sourceColor
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = if (skill.source == ActivatedSkillSource.USER) Icons.Default.Person else Icons.Default.Build,
-                                                contentDescription = null,
-                                                tint = sourceContentColor
-                                            )
-                                            Text(
-                                                text = if (skill.source == ActivatedSkillSource.USER) "You" else "Auto",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = sourceContentColor
+                                }
+                                DropdownMenu(
+                                    expanded = showSkillMenu,
+                                    onDismissRequest = { showSkillMenu = false }
+                                ) {
+                                    if (state.availableSkills.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("No enabled skills") },
+                                            onClick = { showSkillMenu = false }
+                                        )
+                                    } else {
+                                        state.availableSkills.forEach { skill ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Column {
+                                                        Text(skill.title)
+                                                        Text(
+                                                            text = skill.description,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                },
+                                                onClick = {
+                                                    showSkillMenu = false
+                                                    onActivateSkill(skill.name)
+                                                }
                                             )
                                         }
                                     }
-                                    TextButton(
-                                        onClick = { onDeactivateSkill(skill.name) },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                }
+                            }
+
+                            IconButton(onClick = onOpenSettings) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = ext.textSecondary
+                                )
+                            }
+                        }
+                    )
+
+                    if (state.isLoadingHistory) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(top = 12.dp, bottom = 196.dp)
+                        ) {
+                            items(5) { index ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(if (index % 2 == 0) 72.dp else 96.dp)
+                                        .padding(horizontal = if (index % 2 == 0) 48.dp else 0.dp)
+                                        .background(
+                                            color = ext.glassOverlay,
+                                            shape = if (index % 2 == 0) NanobotShapes.UserBubble else NanobotShapes.AssistantBubble
+                                        )
+                                        .shimmerEffect()
+                                )
+                            }
+                        }
+                    } else if (state.messages.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            GlassCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                innerPadding = 24.dp,
+                                borderColor = ext.neonGlow.copy(alpha = 0.6f),
+                                highlighted = true
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Surface(
+                                        shape = NanobotShapes.Chip,
+                                        color = ext.neonDim.copy(alpha = 0.24f)
                                     ) {
                                         Text(
-                                            text = "x",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            text = "J.A.R.V.I.S online",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = ext.neon,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                         )
                                     }
+                                    Text(
+                                        text = "What can I help with?",
+                                        style = MaterialTheme.typography.headlineLarge,
+                                        color = ext.textPrimary
+                                    )
+                                    Text(
+                                        text = "Start a conversation, activate a skill, or open a previous session from the drawer.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = ext.textSecondary
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(top = 12.dp, bottom = 196.dp)
+                        ) {
+                            if (state.activeSkills.isNotEmpty()) {
+                                item {
+                                    ActiveSkillsStrip(
+                                        skills = state.activeSkills,
+                                        onDeactivateSkill = onDeactivateSkill
+                                    )
+                                }
+                            }
+
+                            if (state.pendingAttachments.isNotEmpty()) {
+                                item {
+                                    PendingAttachmentsCard(
+                                        attachments = state.pendingAttachments,
+                                        onRemovePendingAttachment = onRemovePendingAttachment
+                                    )
+                                }
+                            }
+
+                            items(state.messages, key = { it.id }) { message ->
+                                AnimatedVisibility(
+                                    visible = true,
+                                    enter = slideInVertically(initialOffsetY = { it / 4 }) + fadeIn()
+                                ) {
+                                    NanobotMessageBubble(
+                                        message = message,
+                                        expanded = message.id in state.expandedToolMessageIds,
+                                        onToggleToolMessage = onToggleToolMessage
+                                    )
+                                }
+                            }
+
+                            if (state.isRunning) {
+                                item {
+                                    AnimatedTypingIndicator()
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            if (state.pendingAttachments.isNotEmpty()) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Pending Attachments",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        state.pendingAttachments.forEach { attachment ->
-                            AttachmentChip(
-                                attachment = attachment,
-                                onRemove = { onRemovePendingAttachment(attachment.id) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Box {
-                    IconButton(
-                        onClick = { showAttachMenu = true },
-                        enabled = !state.isRunning && !state.isSending,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Attach")
-                    }
-                    DropdownMenu(
-                        expanded = showAttachMenu,
-                        onDismissRequest = { showAttachMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Image") },
-                            onClick = {
-                                showAttachMenu = false
-                                pickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("File") },
-                            onClick = {
-                                showAttachMenu = false
-                                fileLauncher.launch(arrayOf("*/*"))
-                            }
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    state.errorMessage?.let { errorText ->
+                        StatusBanner(
+                            text = errorText,
+                            textColor = ext.errorRed,
+                            accentColor = ext.errorRed
                         )
                     }
-                }
 
-                OutlinedTextField(
-                    value = state.input,
-                    onValueChange = onMessageChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            when (state.voiceState) {
-                                VoiceState.LISTENING -> "Listening for your message..."
-                                VoiceState.PROCESSING -> "Transcribing voice input..."
-                                else -> "Ask Nanobot anything..."
-                            }
+                    state.statusText?.let { status ->
+                        StatusBanner(
+                            text = status,
+                            textColor = ext.neon,
+                            accentColor = ext.neon
                         )
-                    },
-                    maxLines = 6
-                )
+                    }
 
-                if (state.voiceInputEnabled) {
-                    Box(
-                        modifier = Modifier
-                            .padding(bottom = 4.dp)
-                            .combinedClickable(
-                                enabled = !state.isCancelling,
-                                onClick = {
-                                    if (state.voiceState == VoiceState.SPEAKING) {
-                                        onStopVoiceOutput()
-                                    } else if (state.voiceState == VoiceState.LISTENING || state.voiceState == VoiceState.PROCESSING) {
-                                        onFinishVoiceInput()
-                                    } else {
+                    state.voiceStatusHint?.let { hint ->
+                        StatusBanner(
+                            text = hint,
+                            textColor = if (state.voiceState == VoiceState.LISTENING) ext.errorRed else ext.textSecondary,
+                            accentColor = if (state.voiceState == VoiceState.LISTENING) ext.errorRed else ext.textSecondary
+                        )
+                    }
+
+                    NanobotInputBar(
+                        value = state.input,
+                        onValueChange = onMessageChange,
+                        placeholder = when (state.voiceState) {
+                            VoiceState.LISTENING -> "Listening for your message..."
+                            VoiceState.PROCESSING -> "Transcribing voice input..."
+                            else -> "Message..."
+                        },
+                        isRunning = state.isRunning,
+                        isSending = state.isSending,
+                        isCancelling = state.isCancelling,
+                        onSendClick = onSendClick,
+                        onCancelClick = onCancelClick,
+                        onAttachClick = { showAttachSheet = true },
+                        voiceContent = if (state.voiceInputEnabled) {
+                            {
+                                VoiceInputButton(
+                                    state = state.voiceState,
+                                    enabled = !state.isCancelling,
+                                    onTap = {
+                                        when (state.voiceState) {
+                                            VoiceState.SPEAKING -> onStopVoiceOutput()
+                                            VoiceState.LISTENING, VoiceState.PROCESSING -> onFinishVoiceInput()
+                                            VoiceState.IDLE -> {
+                                                val granted = ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.RECORD_AUDIO
+                                                ) == PackageManager.PERMISSION_GRANTED
+                                                if (granted) {
+                                                    onToggleVoiceInput()
+                                                } else {
+                                                    recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onLongPress = {
                                         val granted = ContextCompat.checkSelfPermission(
                                             context,
                                             Manifest.permission.RECORD_AUDIO
                                         ) == PackageManager.PERMISSION_GRANTED
                                         if (granted) {
-                                            onToggleVoiceInput()
+                                            onStartVoiceInput()
                                         } else {
                                             recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                         }
                                     }
-                                },
-                                onLongClick = {
-                                    val granted = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.RECORD_AUDIO
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    if (granted) {
-                                        onStartVoiceInput()
-                                    } else {
-                                        recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    }
-                                }
-                            )
-                    ) {
-                        Icon(
-                            imageVector = when (state.voiceState) {
-                                VoiceState.LISTENING -> Icons.Default.Person
-                                VoiceState.PROCESSING -> Icons.Default.Build
-                                VoiceState.SPEAKING -> Icons.Default.Close
-                                VoiceState.IDLE -> Icons.Default.Person
-                            },
-                            contentDescription = when (state.voiceState) {
-                                VoiceState.SPEAKING -> "Stop voice output"
-                                else -> "Voice input"
-                            },
-                            tint = if (state.voiceState == VoiceState.LISTENING) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
+                                )
                             }
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = if (state.isRunning) onCancelClick else onSendClick,
-                    enabled = !state.isCancelling,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                ) {
-                    if (state.isCancelling) {
-                        CircularProgressIndicator(modifier = Modifier.padding(2.dp))
-                    } else if (state.isRunning) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Stop")
-                    } else if (state.isSending) {
-                        CircularProgressIndicator(modifier = Modifier.padding(2.dp))
-                    } else {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
-                    }
+                        } else {
+                            null
+                        }
+                    )
                 }
             }
         }
     }
-}
 
-@Composable
-private fun MessageBubble(
-    message: ChatMessage,
-    expanded: Boolean,
-    onToggleToolMessage: (String) -> Unit
-) {
-    val isUser = message.role == MessageRole.USER
-    val isTool = message.role == MessageRole.TOOL
-    val toolPresentation = if (isTool) presentToolMessage(message) else null
-    val containerColor = if (isUser) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else if (isTool) {
-        MaterialTheme.colorScheme.toolContainerColor(toolPresentation?.kind ?: ToolMessageKind.OTHER)
-    } else {
-        MaterialTheme.colorScheme.secondaryContainer
-    }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
-    ) {
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = containerColor),
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .clickable(enabled = isTool) { onToggleToolMessage(message.id) }
+    if (showAttachSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAttachSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = NanobotShapes.BottomSheet
         ) {
             Column(
-                modifier = Modifier.padding(14.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (isTool && !expanded) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        toolPresentation?.let { presentation ->
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        MaterialTheme.colorScheme.toolBadgeColor(presentation.kind),
-                                        CircleShape
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = presentation.badgeLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                        }
-                        Text(
-                            text = (message.toolName ?: "tool_output").replace('_', ' '),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = message.createdAt.toReadableTime(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    return@Column
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    toolPresentation?.let { presentation ->
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.toolBadgeColor(presentation.kind),
-                                    CircleShape
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = presentation.badgeLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
-                    }
-                    Text(
-                        text = when {
-                            isUser -> "You"
-                            isTool -> "Tool"
-                            else -> "Nanobot"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = message.createdAt.toReadableTime(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (isTool) {
-                    Text(
-                        text = buildString {
-                            append(message.toolName ?: "tool_output")
-                            append(if (expanded) " • tap to collapse" else " • tap to expand")
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
                 Text(
-                    text = when {
-                        isTool && !expanded -> AnnotatedString(toolSummaryText(message))
-                        !message.content.isNullOrBlank() -> parseBoldText(message.content.orEmpty())
-                        message.role == MessageRole.TOOL -> AnnotatedString("Tool result available")
-                        else -> AnnotatedString("Working...")
-                    },
-                    style = MaterialTheme.typography.bodyLarge
+                    text = "Add Attachment",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = ext.textPrimary
                 )
-                if (message.attachments.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier.padding(top = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        message.attachments.forEach { attachment ->
-                            AttachmentSummary(attachment = attachment)
-                        }
-                    }
+
+                AttachmentOption(
+                    icon = Icons.Default.Add,
+                    label = "Choose image",
+                    supportingText = "Send a photo or screenshot with your prompt."
+                ) {
+                    showAttachSheet = false
+                    pickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
+
+                AttachmentOption(
+                    icon = Icons.Default.Build,
+                    label = "Choose file",
+                    supportingText = "Attach any local document the model can inspect."
+                ) {
+                    showAttachSheet = false
+                    fileLauncher.launch(arrayOf("*/*"))
                 }
             }
         }
     }
 }
 
-private fun ColorScheme.toolContainerColor(kind: ToolMessageKind) = when (kind) {
-    ToolMessageKind.WEB_SEARCH -> tertiaryContainer
-    ToolMessageKind.WEB_FETCH -> tertiaryContainer.copy(alpha = 0.92f)
-    ToolMessageKind.WORKSPACE_WRITE -> primaryContainer.copy(alpha = 0.88f)
-    ToolMessageKind.WORKSPACE_READ -> secondaryContainer.copy(alpha = 0.92f)
-    ToolMessageKind.DELEGATION -> tertiaryContainer.copy(alpha = 0.85f)
-    ToolMessageKind.MCP -> primaryContainer.copy(alpha = 0.82f)
-    ToolMessageKind.SKILL -> secondaryContainer.copy(alpha = 0.82f)
-    ToolMessageKind.MEMORY -> secondaryContainer.copy(alpha = 0.88f)
-    ToolMessageKind.NOTIFY -> tertiaryContainer.copy(alpha = 0.8f)
-    ToolMessageKind.OTHER -> tertiaryContainer
-}
-
-private fun ColorScheme.toolBadgeColor(kind: ToolMessageKind) = when (kind) {
-    ToolMessageKind.WEB_SEARCH -> tertiary
-    ToolMessageKind.WEB_FETCH -> tertiary
-    ToolMessageKind.WORKSPACE_WRITE -> primary
-    ToolMessageKind.WORKSPACE_READ -> secondary
-    ToolMessageKind.DELEGATION -> tertiary
-    ToolMessageKind.MCP -> primary
-    ToolMessageKind.SKILL -> secondary
-    ToolMessageKind.MEMORY -> secondary
-    ToolMessageKind.NOTIFY -> tertiary
-    ToolMessageKind.OTHER -> primary
+@Composable
+private fun ActiveSkillsStrip(
+    skills: List<ActiveSkillUiState>,
+    onDeactivateSkill: (String) -> Unit
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), innerPadding = 12.dp, highlighted = true) {
+        Text(
+            text = "Active Skills",
+            style = MaterialTheme.typography.labelLarge,
+            color = NanobotTheme.extendedColors.textSecondary
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            skills.forEach { skill ->
+                ActiveSkillChip(skill = skill, onDeactivate = { onDeactivateSkill(skill.name) })
+            }
+        }
+    }
 }
 
 @Composable
-private fun AttachmentChip(
+private fun ActiveSkillChip(
+    skill: ActiveSkillUiState,
+    onDeactivate: () -> Unit
+) {
+    val ext = NanobotTheme.extendedColors
+    val sourceLabel = if (skill.source == ActivatedSkillSource.USER) "You" else "Auto"
+    val sourceColor = if (skill.source == ActivatedSkillSource.USER) ext.neonDim else ext.neonGlow
+
+    Surface(
+        shape = NanobotShapes.Chip,
+        color = ext.glassOverlay,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = skill.title,
+                style = MaterialTheme.typography.labelMedium,
+                color = ext.textPrimary,
+                fontWeight = FontWeight.Medium
+            )
+            Surface(shape = NanobotShapes.Chip, color = sourceColor) {
+                Text(
+                    text = sourceLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ext.textPrimary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                )
+            }
+            IconButton(onClick = onDeactivate, modifier = Modifier.size(18.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Deactivate skill",
+                    tint = ext.textSecondary,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingAttachmentsCard(
+    attachments: List<Attachment>,
+    onRemovePendingAttachment: (String) -> Unit
+) {
+    val ext = NanobotTheme.extendedColors
+
+    GlassCard(modifier = Modifier.fillMaxWidth(), highlighted = true) {
+        Text(
+            text = "Pending Attachments",
+            style = MaterialTheme.typography.labelLarge,
+            color = ext.textPrimary,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "These files will be sent with your next prompt.",
+            style = MaterialTheme.typography.bodySmall,
+            color = ext.textSecondary
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            attachments.forEach { attachment ->
+                PendingAttachmentRow(
+                    attachment = attachment,
+                    onRemove = { onRemovePendingAttachment(attachment.id) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingAttachmentRow(
     attachment: Attachment,
     onRemove: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AttachmentSummary(attachment)
-        TextButton(onClick = onRemove) {
-            Text("Remove")
-        }
-    }
-}
-
-@Composable
-private fun AttachmentSummary(attachment: Attachment) {
+    val ext = NanobotTheme.extendedColors
     val typeLabel = when (attachment.type) {
         AttachmentType.IMAGE -> "Image"
         AttachmentType.FILE -> "File"
     }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = NanobotShapes.CardSmall,
+        innerPadding = 10.dp,
+        backgroundColor = ext.glassOverlay.copy(alpha = 0.8f)
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(typeLabel, style = MaterialTheme.typography.labelMedium)
-            }
-            Column {
-                Text(attachment.displayName, style = MaterialTheme.typography.bodyMedium)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "$typeLabel • ${attachment.displayName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ext.textPrimary,
+                    fontWeight = FontWeight.Medium
+                )
                 Text(
                     text = "${attachment.mimeType} • ${attachment.sizeBytes} bytes",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = ext.textSecondary
+                )
+            }
+            IconButton(onClick = onRemove) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Remove attachment",
+                    tint = ext.textSecondary
                 )
             }
         }
     }
 }
 
-private fun parseBoldText(text: String): AnnotatedString {
-    return buildAnnotatedString {
-        val pattern = Regex("""\*\*(.*?)\*\*""")
-        var lastIndex = 0
-        pattern.findAll(text).forEach { matchResult ->
-            // 添加匹配前的普通文本
-            append(text.substring(lastIndex, matchResult.range.first))
-            // 添加加粗文本（不含星号）
-            withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                append(matchResult.groupValues[1])
+@Composable
+private fun StatusBanner(
+    text: String,
+    textColor: Color,
+    accentColor: Color
+) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = NanobotShapes.CardSmall,
+        innerPadding = 12.dp,
+        borderColor = accentColor.copy(alpha = 0.4f),
+        highlighted = true
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = textColor
+        )
+    }
+}
+
+@Composable
+private fun VoiceInputButton(
+    state: VoiceState,
+    enabled: Boolean,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit
+) {
+    val ext = NanobotTheme.extendedColors
+
+    Box(
+        modifier = Modifier
+            .padding(bottom = 4.dp)
+            .combinedClickable(
+                enabled = enabled,
+                onClick = onTap,
+                onLongClick = onLongPress
+            )
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        when (state) {
+            VoiceState.PROCESSING -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = ext.neon
+                )
             }
-            lastIndex = matchResult.range.last + 1
-        }
-        // 添加剩余文本
-        if (lastIndex < text.length) {
-            append(text.substring(lastIndex))
+
+            VoiceState.SPEAKING -> {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Stop voice output",
+                    tint = ext.neon
+                )
+            }
+
+            VoiceState.LISTENING -> {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Finish voice input",
+                    tint = ext.errorRed
+                )
+            }
+
+            VoiceState.IDLE -> {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Voice input",
+                    tint = ext.textSecondary
+                )
+            }
         }
     }
 }
 
-private fun Long.toReadableTime(): String {
-    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-    return formatter.format(Date(this))
+@Composable
+private fun AttachmentOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    supportingText: String,
+    onClick: () -> Unit
+) {
+    val ext = NanobotTheme.extendedColors
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = NanobotShapes.CardSmall,
+        innerPadding = 14.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = NanobotShapes.Chip,
+                color = ext.neonDim.copy(alpha = 0.3f)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = ext.neon,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = ext.textPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = supportingText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ext.textSecondary
+                )
+            }
+        }
+    }
 }

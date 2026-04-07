@@ -1,30 +1,41 @@
 package com.example.nanobot.feature.memory
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.nanobot.core.model.MemoryFact
 import com.example.nanobot.core.model.MemorySummary
 import com.example.nanobot.core.model.toConfidencePercent
+import com.example.nanobot.ui.components.GlassCard
+import com.example.nanobot.ui.components.GlowButton
+import com.example.nanobot.ui.components.NanobotTopBar
+import com.example.nanobot.ui.components.nanobotTextFieldColors
+import com.example.nanobot.ui.theme.NanobotShapes
+import com.example.nanobot.ui.theme.NanobotTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,15 +53,17 @@ fun MemoryScreen(
     onCancelFactEdit: () -> Unit,
     onBackClick: () -> Unit
 ) {
+    val ext = NanobotTheme.extendedColors
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("Memory") },
-                navigationIcon = {
-                    TextButton(onClick = onBackClick) {
-                        Text("Back")
-                    }
-                }
+            NanobotTopBar(
+                title = "Memory",
+                subtitle = "Summaries, facts, and confidence signals",
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                navigationContentDescription = "Back",
+                onNavigationClick = onBackClick
             )
         }
     ) { paddingValues ->
@@ -62,17 +75,33 @@ fun MemoryScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
+                GlassCard(modifier = Modifier.fillMaxWidth(), innerPadding = 18.dp, highlighted = true) {
+                    Text(
+                        text = "Nanobot builds structured memory from conversation history to keep long-running sessions coherent.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ext.textPrimary
+                    )
+                    Text(
+                        text = "Review summaries, edit user facts, or rebuild memory after major conversation changes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ext.textSecondary
+                    )
+                }
+            }
+            item {
                 Text(
                     text = "Session Summaries",
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = ext.textPrimary
                 )
             }
+
             if (state.summaries.isEmpty()) {
                 item {
                     Text(
                         text = "No summaries yet. Send a few messages and Nanobot will start building memory.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = ext.textSecondary
                     )
                 }
             } else {
@@ -81,6 +110,8 @@ fun MemoryScreen(
                     MemoryCard(
                         title = "Session ${summary.sessionId.take(8)}",
                         body = summary.summary,
+                        confidencePercent = summary.confidence.toConfidencePercent(),
+                        accentColor = ext.neonDim,
                         updatedAt = summary.updatedAt,
                         metadata = if (summary.sessionId == state.currentSessionId) {
                             buildSummaryMetadata(summary, currentSession = true)
@@ -89,12 +120,17 @@ fun MemoryScreen(
                         },
                         actions = {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(onClick = { onRebuildSummary(summary.sessionId) }) {
-                                    Text(if (isRebuilding) "Rebuilding..." else "Rebuild")
-                                }
-                                TextButton(onClick = { onDeleteSummary(summary.sessionId) }) {
-                                    Text("Delete")
-                                }
+                                GlowButton(
+                                    text = if (isRebuilding) "Rebuilding..." else "Rebuild",
+                                    onClick = { onRebuildSummary(summary.sessionId) },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = !isRebuilding
+                                )
+                                GlowButton(
+                                    text = "Delete",
+                                    onClick = { onDeleteSummary(summary.sessionId) },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     )
@@ -106,14 +142,16 @@ fun MemoryScreen(
                     text = "User Facts",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
+                    color = ext.textPrimary,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
+
             if (state.facts.isEmpty()) {
                 item {
                     Text(
                         text = "No user facts captured yet.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = ext.textSecondary
                     )
                 }
             } else {
@@ -125,16 +163,22 @@ fun MemoryScreen(
                             else -> "User Fact"
                         },
                         body = fact.fact,
+                        confidencePercent = fact.confidence.toConfidencePercent(),
+                        accentColor = ext.neon,
                         updatedAt = fact.updatedAt,
                         metadata = buildFactMetadata(fact, state.currentSessionId),
                         actions = {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(onClick = { onEditFact(fact.id) }) {
-                                    Text("Edit")
-                                }
-                                TextButton(onClick = { onDeleteFact(fact.id) }) {
-                                    Text("Delete")
-                                }
+                                GlowButton(
+                                    text = "Edit",
+                                    onClick = { onEditFact(fact.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                GlowButton(
+                                    text = "Delete",
+                                    onClick = { onDeleteFact(fact.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     )
@@ -143,30 +187,44 @@ fun MemoryScreen(
         }
     }
 
-    val editor = state.editor
-    if (editor != null) {
-        AlertDialog(
+    state.editor?.let { editor ->
+        ModalBottomSheet(
             onDismissRequest = onCancelFactEdit,
-            title = { Text("Edit Memory Fact") },
-            text = {
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = NanobotShapes.BottomSheet
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Edit Memory Fact",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = ext.textPrimary
+                )
                 OutlinedTextField(
                     value = editor.draftText,
                     onValueChange = onFactDraftChange,
                     modifier = Modifier.fillMaxWidth(),
-                    minLines = 3
+                    minLines = 3,
+                    colors = nanobotTextFieldColors()
                 )
-            },
-            confirmButton = {
-                TextButton(onClick = onSaveFactEdit) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onCancelFactEdit) {
-                    Text("Cancel")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GlowButton(
+                        text = "Cancel",
+                        onClick = onCancelFactEdit,
+                        modifier = Modifier.weight(1f)
+                    )
+                    GlowButton(
+                        text = "Save",
+                        onClick = onSaveFactEdit,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
-        )
+        }
     }
 }
 
@@ -201,40 +259,77 @@ private fun buildFactMetadata(fact: MemoryFact, currentSessionId: String?): Stri
 private fun MemoryCard(
     title: String,
     body: String,
+    confidencePercent: Int?,
+    accentColor: Color,
     updatedAt: Long,
     metadata: String? = null,
     actions: @Composable (() -> Unit)? = null
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+    val ext = NanobotTheme.extendedColors
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .width(3.dp)
+                    .height(48.dp)
+                    .background(accentColor, shape = androidx.compose.foundation.shape.CircleShape)
             )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            if (!metadata.isNullOrBlank()) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    text = metadata,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ext.textPrimary
                 )
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ext.textPrimary
+                )
+                confidencePercent?.let { percent ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Confidence",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ext.textTertiary
+                        )
+                        LinearProgressIndicator(
+                            progress = { percent / 100f },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(4.dp),
+                            color = ext.neon,
+                            trackColor = ext.glassBorder
+                        )
+                        Text(
+                            text = "$percent%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ext.neon
+                        )
+                    }
+                }
+                if (!metadata.isNullOrBlank()) {
+                    Text(
+                        text = metadata,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ext.textSecondary
+                    )
+                }
+                Text(
+                    text = "Updated ${updatedAt.toReadableTime()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ext.textSecondary
+                )
+                actions?.invoke()
             }
-            Text(
-                text = "Updated ${updatedAt.toReadableTime()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            actions?.invoke()
         }
     }
 }

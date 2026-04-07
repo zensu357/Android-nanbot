@@ -1,5 +1,6 @@
 package com.example.nanobot.feature.tools
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,21 +8,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.nanobot.ui.components.GlassCard
+import com.example.nanobot.ui.components.GlowButton
+import com.example.nanobot.ui.components.NanobotTopBar
+import com.example.nanobot.ui.components.nanobotTextFieldColors
+import com.example.nanobot.ui.theme.CodeTextStyle
+import com.example.nanobot.ui.theme.NanobotShapes
+import com.example.nanobot.ui.theme.NanobotTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,15 +35,18 @@ fun ToolDebugScreen(
     onRunTool: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
+    val ext = NanobotTheme.extendedColors
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("Tool Debug") },
-                navigationIcon = {
-                    TextButton(onClick = onBackClick) {
-                        Text("Back")
-                    }
-                }
+            NanobotTopBar(
+                title = "Tool Debug",
+                subtitle = "Inspect and execute visible tools",
+                badgeText = if (state.isRunning) "Busy" else null,
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                navigationContentDescription = "Back",
+                onNavigationClick = onBackClick
             )
         }
     ) { paddingValues ->
@@ -51,122 +58,51 @@ fun ToolDebugScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Text(
-                    text = "Inspect registered tools, including cached dynamic MCP tools, and run them manually with JSON arguments.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            item {
-                Text(
-                    text = "Tool policy: ${state.policySummary}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                GlassCard(modifier = Modifier.fillMaxWidth(), innerPadding = 18.dp, highlighted = state.isRunning) {
+                    Text(
+                        text = "Inspect registered tools, including cached dynamic MCP tools, and run them manually with JSON arguments.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ext.textPrimary
+                    )
+                    Text(
+                        text = "Tool policy: ${state.policySummary}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ext.textSecondary
+                    )
+                }
             }
 
             state.promptDiagnostics?.let { diagnostics ->
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "Latest Prompt Diagnostics",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "System prompt: ${diagnostics.systemPromptChars} chars",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Sections: ${diagnostics.systemPromptSections.joinToString()}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Skills catalog/expanded: ${diagnostics.catalogSkillIds.joinToString().ifBlank { "(none)" }} / ${diagnostics.expandedSkillIds.joinToString().ifBlank { "(none)" }}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Memory summary/scratch/session/long-term: ${diagnostics.memorySummaryIncluded} / ${diagnostics.memoryScratchEntryCount} / ${diagnostics.memorySessionFactCount} / ${diagnostics.memoryLongTermFactCount}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Runtime diagnostics: ${diagnostics.runtimeDiagnosticsEnabled} (${diagnostics.runtimeContextChars} chars)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "History kept/original/truncated: ${diagnostics.historyKeptCount}/${diagnostics.historyOriginalCount}/${diagnostics.historyTruncatedMessageCount}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    DiagnosticCard(
+                        title = "Latest Prompt Diagnostics",
+                        lines = listOf(
+                            "System prompt: ${diagnostics.systemPromptChars} chars",
+                            "Sections: ${diagnostics.systemPromptSections.joinToString()}",
+                            "Skills catalog/expanded: ${diagnostics.catalogSkillIds.joinToString().ifBlank { "(none)" }} / ${diagnostics.expandedSkillIds.joinToString().ifBlank { "(none)" }}",
+                            "Memory summary/scratch/session/long-term: ${diagnostics.memorySummaryIncluded} / ${diagnostics.memoryScratchEntryCount} / ${diagnostics.memorySessionFactCount} / ${diagnostics.memoryLongTermFactCount}",
+                            "Runtime diagnostics: ${diagnostics.runtimeDiagnosticsEnabled} (${diagnostics.runtimeContextChars} chars)",
+                            "History kept/original/truncated: ${diagnostics.historyKeptCount}/${diagnostics.historyOriginalCount}/${diagnostics.historyTruncatedMessageCount}"
+                        )
+                    )
                 }
             }
 
             state.webDiagnostics?.let { diagnostics ->
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "Latest Web Diagnostics",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Request kind: ${diagnostics.requestKind}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Target: ${diagnostics.target}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            diagnostics.endpoint?.let { endpoint ->
-                                Text(
-                                    text = "Endpoint: $endpoint",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                text = "Proxy configured: ${diagnostics.proxyConfigured}${diagnostics.proxyValue?.let { " ($it)" } ?: ""}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "DNS resolution skipped due to proxy: ${diagnostics.dnsResolutionSkipped}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    DiagnosticCard(
+                        title = "Latest Web Diagnostics",
+                        lines = buildList {
+                            add("Request kind: ${diagnostics.requestKind}")
+                            add("Target: ${diagnostics.target}")
+                            diagnostics.endpoint?.let { add("Endpoint: $it") }
+                            add("Proxy configured: ${diagnostics.proxyConfigured}${diagnostics.proxyValue?.let { value -> " ($value)" } ?: ""}")
+                            add("DNS resolution skipped due to proxy: ${diagnostics.dnsResolutionSkipped}")
                             if (diagnostics.allowlistedHosts.isNotEmpty()) {
-                                Text(
-                                    text = "Allowlisted endpoint hosts: ${diagnostics.allowlistedHosts.joinToString()}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                add("Allowlisted endpoint hosts: ${diagnostics.allowlistedHosts.joinToString()}")
                             }
                         }
-                    }
+                    )
                 }
             }
 
@@ -175,7 +111,7 @@ fun ToolDebugScreen(
                     Text(
                         text = "Workspace-restricted mode is enabled, so only local read-only tools, local orchestration tools, and workspace sandbox read/write tools are shown.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = ext.neon
                     )
                 }
             }
@@ -184,60 +120,92 @@ fun ToolDebugScreen(
                 item {
                     Text(
                         text = errorText,
-                        color = MaterialTheme.colorScheme.error,
+                        color = ext.errorRed,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
 
             items(state.tools, key = { it.name }) { tool ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = tool.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ext.neon
+                    )
+                    Text(
+                        text = tool.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ext.textSecondary
+                    )
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(ext.codeBackground, NanobotShapes.CardSmall)
+                            .padding(12.dp)
                     ) {
                         Text(
-                            text = tool.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = tool.description,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
                             text = tool.schema,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = CodeTextStyle,
+                            color = ext.textSecondary
                         )
-                        OutlinedTextField(
-                            value = tool.sampleArguments,
-                            onValueChange = { onArgumentsChange(tool.name, it) },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 4,
-                            label = { Text("Arguments JSON") }
-                        )
-                        Button(
-                            onClick = { onRunTool(tool.name) },
-                            enabled = !state.isRunning,
-                            modifier = Modifier.fillMaxWidth()
+                    }
+                    OutlinedTextField(
+                        value = tool.sampleArguments,
+                        onValueChange = { onArgumentsChange(tool.name, it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 4,
+                        textStyle = CodeTextStyle,
+                        label = { Text("Arguments JSON") },
+                        colors = nanobotTextFieldColors()
+                    )
+                    GlowButton(
+                        text = if (state.isRunning) "Running..." else "Run Tool",
+                        onClick = { onRunTool(tool.name) },
+                        enabled = !state.isRunning,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    tool.lastResult?.let { result ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(ext.codeBackground, NanobotShapes.CardSmall)
+                                .padding(12.dp)
                         ) {
-                            Text(if (state.isRunning) "Running..." else "Run Tool")
-                        }
-                        tool.lastResult?.let { result ->
                             Text(
                                 text = result,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
+                                style = CodeTextStyle,
+                                color = ext.successGreen
                             )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticCard(
+    title: String,
+    lines: List<String>
+) {
+    val ext = NanobotTheme.extendedColors
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = ext.textPrimary
+        )
+        lines.forEach { line ->
+            Text(
+                text = line,
+                style = MaterialTheme.typography.bodySmall,
+                color = ext.textSecondary
+            )
         }
     }
 }

@@ -2,6 +2,10 @@ package com.example.nanobot.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
@@ -19,7 +23,6 @@ import com.example.nanobot.feature.memory.MemoryScreen
 import com.example.nanobot.feature.memory.MemoryViewModel
 import com.example.nanobot.feature.settings.SettingsScreen
 import com.example.nanobot.feature.settings.SettingsViewModel
-import com.example.nanobot.feature.sessions.SessionsScreen
 import com.example.nanobot.feature.sessions.SessionsViewModel
 import com.example.nanobot.feature.tools.ToolDebugScreen
 import com.example.nanobot.feature.tools.ToolDebugViewModel
@@ -39,7 +42,19 @@ fun AppNavGraph() {
 
     NavHost(
         navController = navController,
-        startDestination = startDestination
+        startDestination = startDestination,
+        enterTransition = {
+            slideInHorizontally(initialOffsetX = { it }) + fadeIn()
+        },
+        exitTransition = {
+            slideOutHorizontally(targetOffsetX = { -it / 3 }) + fadeOut()
+        },
+        popEnterTransition = {
+            slideInHorizontally(initialOffsetX = { -it / 3 }) + fadeIn()
+        },
+        popExitTransition = {
+            slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+        }
     ) {
         composable(Destinations.Onboarding.route) {
             val viewModel: OnboardingViewModel = hiltViewModel()
@@ -64,6 +79,8 @@ fun AppNavGraph() {
         composable(Destinations.Chat.route) {
             val viewModel: ChatViewModel = hiltViewModel()
             val state = viewModel.uiState.collectAsStateWithLifecycle()
+            val sessionsViewModel: SessionsViewModel = hiltViewModel()
+            val sessionsState = sessionsViewModel.uiState.collectAsStateWithLifecycle()
             ChatScreen(
                 state = state.value,
                 onMessageChange = viewModel::onInputChanged,
@@ -80,23 +97,15 @@ fun AppNavGraph() {
                 onStopVoiceOutput = viewModel::stopVoiceOutput,
                 onVoicePermissionDenied = viewModel::onVoicePermissionDenied,
                 onToggleToolMessage = viewModel::toggleToolMessage,
-                onOpenSessions = { navController.navigate(Destinations.Sessions.route) },
-                onOpenSettings = { navController.navigate(Destinations.Settings.route) }
-            )
-        }
-        composable(Destinations.Sessions.route) {
-            val viewModel: SessionsViewModel = hiltViewModel()
-            val state = viewModel.uiState.collectAsStateWithLifecycle()
-            SessionsScreen(
-                state = state.value,
-                onCreateSession = viewModel::createSession,
-                onSelectSession = {
-                    viewModel.selectSession(it)
-                    navController.popBackStack()
-                },
-                onDeleteSession = viewModel::deleteSession,
-                onDismissError = viewModel::clearError,
-                onBackClick = { navController.popBackStack() }
+                sessions = sessionsState.value.sessions,
+                currentSessionId = sessionsState.value.currentSessionId,
+                onCreateSession = sessionsViewModel::createSession,
+                onSelectSession = sessionsViewModel::selectSession,
+                onDeleteSession = sessionsViewModel::deleteSession,
+                onOpenSettings = { navController.navigate(Destinations.Settings.route) },
+                onOpenMemory = { navController.navigate(Destinations.Memory.route) },
+                onOpenTools = { navController.navigate(Destinations.Tools.route) },
+                sessionsErrorMessage = sessionsState.value.errorMessage
             )
         }
         composable(Destinations.Settings.route) {
