@@ -116,6 +116,8 @@ fun AppNavGraph() {
                 onEnableMemoryChange = viewModel::onEnableMemoryChanged,
                 onEnableVisualMemoryChange = viewModel::onEnableVisualMemoryChanged,
                 onEnableBackgroundWorkChange = viewModel::onEnableBackgroundWorkChanged,
+                onEnableTaskPlanningChange = viewModel::onEnableTaskPlanningChanged,
+                onEnableBehaviorLearningChange = viewModel::onEnableBehaviorLearningChanged,
                 onVoiceInputEnabledChange = viewModel::onVoiceInputEnabledChanged,
                 onVoiceAutoPlayChange = viewModel::onVoiceAutoPlayChanged,
                 onVoiceEngineChange = viewModel::onVoiceEngineChanged,

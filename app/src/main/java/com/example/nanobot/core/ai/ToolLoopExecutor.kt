@@ -12,6 +12,8 @@ import com.example.nanobot.core.model.LlmChatRequest
 import com.example.nanobot.core.model.LlmMessageDto
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.domain.repository.ChatRepository
+import com.example.nanobot.core.learning.BehaviorTracker
+import com.example.nanobot.core.learning.ToolUsageEvent
 import com.example.nanobot.core.tools.ToolResult
 import com.example.nanobot.core.tools.ToolRegistry
 import javax.inject.Inject
@@ -26,13 +28,18 @@ import kotlinx.serialization.json.putJsonObject
 class ToolLoopExecutor @Inject constructor(
     private val chatRepository: ChatRepository,
     private val toolRegistry: ToolRegistry,
-    private val attachmentStore: AttachmentStore? = null
+    private val attachmentStore: AttachmentStore? = null,
+    private val behaviorTracker: BehaviorTracker? = null
 ) {
     suspend fun execute(
         sessionId: String,
         initialMessages: List<com.example.nanobot.core.model.LlmMessageDto>,
         config: AgentConfig,
-        runContext: AgentRunContext = AgentRunContext.root(sessionId, config.maxSubagentDepth),
+        runContext: AgentRunContext = AgentRunContext.root(
+            sessionId = sessionId,
+            maxSubagentDepth = config.maxSubagentDepth,
+            maxParallelSubagents = config.maxParallelSubagents
+        ),
         maxIterations: Int = config.maxToolIterations,
         onProgress: suspend (AgentProgressEvent) -> Unit = {}
     ): AgentTurnResult {
@@ -49,7 +56,7 @@ class ToolLoopExecutor @Inject constructor(
 
         onProgress(AgentProgressEvent.Started)
 
-        repeat(maxIterations) {
+        repeat(maxIterations) { iteration ->
             onProgress(AgentProgressEvent.Thinking)
             val response = chatRepository.completeChat(
                 request = LlmChatRequest(
@@ -81,6 +88,7 @@ class ToolLoopExecutor @Inject constructor(
                 if (toolCall.name !in visibleToolNames) {
                     onProgress(AgentProgressEvent.Error("Tool '${toolCall.name}' is blocked by the current tool access policy."))
                 }
+                val startTime = System.currentTimeMillis()
                 val result = try {
                     val structuredResult = toolRegistry.executeStructured(
                         toolCall.name,
@@ -99,6 +107,18 @@ class ToolLoopExecutor @Inject constructor(
                     throw throwable
                 }
                 val persistedAttachments = persistResultAttachments(toolCall.name, result)
+                if (config.enableBehaviorLearning) {
+                    behaviorTracker?.trackToolUsage(
+                        ToolUsageEvent(
+                            toolName = toolCall.name,
+                            sessionId = effectiveRunContext.sessionId,
+                            arguments = toolCall.arguments.toString(),
+                            success = true,
+                            durationMs = System.currentTimeMillis() - startTime,
+                            turnIndex = iteration
+                        )
+                    )
+                }
                 val (textContent, llmMessage) = buildToolLlmMessage(toolCall.id, result)
                 val toolMessage = ChatMessage(
                     sessionId = sessionId,

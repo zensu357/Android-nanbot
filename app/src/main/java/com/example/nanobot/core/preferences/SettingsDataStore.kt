@@ -65,6 +65,8 @@ class SettingsDataStore @Inject constructor(
                 enableMemory = preferences[ENABLE_MEMORY] ?: DEFAULT_ENABLE_MEMORY,
                 enableVisualMemory = preferences[ENABLE_VISUAL_MEMORY] ?: DEFAULT_ENABLE_VISUAL_MEMORY,
                 enableBackgroundWork = preferences[ENABLE_BACKGROUND_WORK] ?: DEFAULT_ENABLE_BACKGROUND_WORK,
+                enableTaskPlanning = preferences[ENABLE_TASK_PLANNING] ?: DEFAULT_ENABLE_TASK_PLANNING,
+                enableBehaviorLearning = preferences[ENABLE_BEHAVIOR_LEARNING] ?: DEFAULT_ENABLE_BEHAVIOR_LEARNING,
                 webSearchApiKey = preferences[WEB_SEARCH_API_KEY].orEmpty(),
                 webProxy = preferences[WEB_PROXY].orEmpty(),
                 restrictToWorkspace = preferences[RESTRICT_TO_WORKSPACE] ?: DEFAULT_RESTRICT_TO_WORKSPACE,
@@ -73,6 +75,8 @@ class SettingsDataStore @Inject constructor(
                     ?.split(SKILL_ID_SEPARATOR)
                     ?.filter { it.isNotBlank() }
                     .orEmpty(),
+                maxSubagentDepth = preferences[MAX_SUBAGENT_DEPTH] ?: DEFAULT_MAX_SUBAGENT_DEPTH,
+                maxParallelSubagents = preferences[MAX_PARALLEL_SUBAGENTS] ?: DEFAULT_MAX_PARALLEL_SUBAGENTS,
                 systemPrompt = preferences[SYSTEM_PROMPT] ?: DEFAULT_PROMPT,
                 temperature = preferences[TEMPERATURE] ?: 0.2,
                 voiceInputEnabled = preferences[VOICE_INPUT_ENABLED] ?: false,
@@ -129,11 +133,15 @@ class SettingsDataStore @Inject constructor(
             preferences[ENABLE_MEMORY] = config.enableMemory
             preferences[ENABLE_VISUAL_MEMORY] = config.enableVisualMemory
             preferences[ENABLE_BACKGROUND_WORK] = config.enableBackgroundWork
+            preferences[ENABLE_TASK_PLANNING] = config.enableTaskPlanning
+            preferences[ENABLE_BEHAVIOR_LEARNING] = config.enableBehaviorLearning
             preferences[WEB_SEARCH_API_KEY] = config.webSearchApiKey
             preferences[WEB_PROXY] = config.webProxy
             preferences[RESTRICT_TO_WORKSPACE] = config.restrictToWorkspace
             preferences[PRESET_ID] = config.presetId
             preferences[ENABLED_SKILL_IDS] = config.enabledSkillIds.joinToString(SKILL_ID_SEPARATOR)
+            preferences[MAX_SUBAGENT_DEPTH] = config.maxSubagentDepth
+            preferences[MAX_PARALLEL_SUBAGENTS] = config.maxParallelSubagents
             preferences[SYSTEM_PROMPT] = config.systemPrompt
             preferences[TEMPERATURE] = config.temperature
             preferences[VOICE_INPUT_ENABLED] = config.voiceInputEnabled
@@ -205,8 +213,12 @@ class SettingsDataStore @Inject constructor(
         const val DEFAULT_ENABLE_MEMORY = true
         const val DEFAULT_ENABLE_VISUAL_MEMORY = false
         const val DEFAULT_ENABLE_BACKGROUND_WORK = true
+        const val DEFAULT_ENABLE_TASK_PLANNING = true
+        const val DEFAULT_ENABLE_BEHAVIOR_LEARNING = true
         const val DEFAULT_RESTRICT_TO_WORKSPACE = false
         const val DEFAULT_PRESET = "assistant_default"
+        const val DEFAULT_MAX_SUBAGENT_DEPTH = 3
+        const val DEFAULT_MAX_PARALLEL_SUBAGENTS = 4
         const val DEFAULT_PROMPT = "You are Nanobot, a helpful Android-native assistant."
         const val SKILL_ID_SEPARATOR = ","
 
@@ -222,11 +234,15 @@ class SettingsDataStore @Inject constructor(
         val ENABLE_MEMORY = booleanPreferencesKey("enable_memory")
         val ENABLE_VISUAL_MEMORY = booleanPreferencesKey("enable_visual_memory")
         val ENABLE_BACKGROUND_WORK = booleanPreferencesKey("enable_background_work")
+        val ENABLE_TASK_PLANNING = booleanPreferencesKey("enable_task_planning")
+        val ENABLE_BEHAVIOR_LEARNING = booleanPreferencesKey("enable_behavior_learning")
         val WEB_SEARCH_API_KEY = stringPreferencesKey("web_search_api_key")
         val WEB_PROXY = stringPreferencesKey("web_proxy")
         val RESTRICT_TO_WORKSPACE = booleanPreferencesKey("restrict_to_workspace")
         val PRESET_ID = stringPreferencesKey("preset_id")
         val ENABLED_SKILL_IDS = stringPreferencesKey("enabled_skill_ids")
+        val MAX_SUBAGENT_DEPTH = intPreferencesKey("max_subagent_depth")
+        val MAX_PARALLEL_SUBAGENTS = intPreferencesKey("max_parallel_subagents")
         val SKILLS_DIRECTORY_URI = stringPreferencesKey("skills_directory_uri")
         val SKILL_ROOT_URIS = stringPreferencesKey("skill_root_uris")
         val TRUST_PROJECT_SKILLS = booleanPreferencesKey("trust_project_skills")

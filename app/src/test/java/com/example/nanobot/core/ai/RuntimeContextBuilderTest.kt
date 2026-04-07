@@ -6,11 +6,15 @@ import com.example.nanobot.core.mcp.McpServerDefinition
 import com.example.nanobot.core.mcp.McpToolDescriptor
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.taskplan.TaskPlan
+import com.example.nanobot.core.taskplan.TaskStateStore
+import com.example.nanobot.core.taskplan.TaskStep
 import com.example.nanobot.core.tools.AgentTool
 import com.example.nanobot.core.tools.ToolAccessCategory
 import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.core.tools.ToolRegistry
 import com.example.nanobot.core.tools.ToolValidator
+import com.example.nanobot.data.mapper.toEntity
 import com.example.nanobot.domain.repository.WorkspaceRepository
 import com.example.nanobot.core.workspace.WorkspaceEntry
 import com.example.nanobot.core.workspace.WorkspaceFileContent
@@ -36,7 +40,8 @@ class RuntimeContextBuilderTest {
             workspaceRepository = FakeWorkspaceRepository(),
             toolRegistry = registry,
             skillRepository = FakeSkillRepository(),
-            mcpRegistry = FakeMcpRegistry()
+            mcpRegistry = FakeMcpRegistry(),
+            taskStateStore = TaskStateStore(FakeTaskPlanDao())
         )
         val config = AgentConfig(enabledSkillIds = listOf("planner_mode"))
         val route = ProviderRegistry.resolve(
@@ -78,7 +83,8 @@ class RuntimeContextBuilderTest {
             workspaceRepository = FakeWorkspaceRepository(),
             toolRegistry = registry,
             skillRepository = FakeSkillRepository(),
-            mcpRegistry = FakeMcpRegistry()
+            mcpRegistry = FakeMcpRegistry(),
+            taskStateStore = TaskStateStore(FakeTaskPlanDao())
         )
         val config = AgentConfig(enabledSkillIds = listOf("planner_mode"), maxTokens = 512)
         val route = ProviderRegistry.resolve(
@@ -99,6 +105,51 @@ class RuntimeContextBuilderTest {
         assertTrue(context.contains("Workspace Sandbox: workspace:/sandbox"))
         assertTrue(context.contains("Provider Label:"))
         assertTrue(context.contains("Tool Access Policy:"))
+    }
+
+    @Test
+    fun includesActiveTaskPlanContinuationHint() = runTest {
+        val registry = ToolRegistry(ToolValidator(), ToolAccessPolicy()).apply {
+            register(FakeTool("task_plan", ToolAccessCategory.LOCAL_ORCHESTRATION))
+        }
+        val builder = RuntimeContextBuilder(
+            workspaceRepository = FakeWorkspaceRepository(),
+            toolRegistry = registry,
+            skillRepository = FakeSkillRepository(),
+            mcpRegistry = FakeMcpRegistry(),
+            taskStateStore = TaskStateStore(
+                FakeTaskPlanDao(
+                    TaskPlan(
+                        id = "plan-1",
+                        sessionId = "session-1",
+                        title = "Refactor Flow",
+                        originalGoal = "Goal",
+                        steps = listOf(
+                            TaskStep(index = 0, description = "Inspect", status = com.example.nanobot.core.taskplan.StepStatus.COMPLETED),
+                            TaskStep(index = 1, description = "Apply changes")
+                        )
+                    )
+                )
+            )
+        )
+        val config = AgentConfig(maxTokens = 512)
+        val route = ProviderRegistry.resolve(
+            providerType = config.providerType,
+            apiKey = config.apiKey,
+            baseUrl = config.baseUrl,
+            model = config.model,
+            temperature = config.temperature
+        )
+
+        val context = builder.build(
+            config = config,
+            runContext = AgentRunContext.root(sessionId = "session-1"),
+            route = route,
+            latestUserInput = "继续"
+        )
+
+        assertTrue(context.contains("Active Task Plan ID: plan-1"))
+        assertTrue(context.contains("prefer using task_plan with action=resume"))
     }
 
     private class FakeMcpRegistry : McpRegistry {
@@ -174,5 +225,29 @@ class RuntimeContextBuilderTest {
             config: AgentConfig,
             runContext: AgentRunContext
         ): String = name
+    }
+
+    private class FakeTaskPlanDao(
+        initial: TaskPlan? = null
+    ) : com.example.nanobot.core.database.dao.TaskPlanDao {
+        private val plans = linkedMapOf<String, com.example.nanobot.core.database.entity.TaskPlanEntity>()
+
+        init {
+            if (initial != null) {
+                plans[initial.id] = initial.toEntity()
+            }
+        }
+
+        override suspend fun upsert(entity: com.example.nanobot.core.database.entity.TaskPlanEntity) {
+            plans[entity.id] = entity
+        }
+
+        override suspend fun getById(id: String): com.example.nanobot.core.database.entity.TaskPlanEntity? = plans[id]
+
+        override suspend fun getBySession(sessionId: String): List<com.example.nanobot.core.database.entity.TaskPlanEntity> =
+            plans.values.filter { it.sessionId == sessionId }
+
+        override suspend fun getActiveBySession(sessionId: String): com.example.nanobot.core.database.entity.TaskPlanEntity? =
+            plans.values.firstOrNull { it.sessionId == sessionId && (it.status == "PENDING" || it.status == "IN_PROGRESS") }
     }
 }

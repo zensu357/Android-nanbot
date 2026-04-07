@@ -71,6 +71,8 @@ fun SettingsScreen(
     onEnableMemoryChange: (Boolean) -> Unit,
     onEnableVisualMemoryChange: (Boolean) -> Unit,
     onEnableBackgroundWorkChange: (Boolean) -> Unit,
+    onEnableTaskPlanningChange: (Boolean) -> Unit,
+    onEnableBehaviorLearningChange: (Boolean) -> Unit,
     onVoiceInputEnabledChange: (Boolean) -> Unit,
     onVoiceAutoPlayChange: (Boolean) -> Unit,
     onVoiceEngineChange: (VoiceEngineType) -> Unit,
@@ -650,6 +652,16 @@ fun SettingsScreen(
                     label = "Enable Background Work",
                     checked = state.enableBackgroundWork,
                     onCheckedChange = onEnableBackgroundWorkChange
+                )
+                SettingToggleRow(
+                    label = "Enable Task Planning",
+                    checked = state.enableTaskPlanning,
+                    onCheckedChange = onEnableTaskPlanningChange
+                )
+                SettingToggleRow(
+                    label = "Enable Behavior Learning",
+                    checked = state.enableBehaviorLearning,
+                    onCheckedChange = onEnableBehaviorLearningChange
                 )
                 SettingToggleRow(
                     label = "Enable Voice Input",

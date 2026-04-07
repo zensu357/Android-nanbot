@@ -4,6 +4,8 @@ import com.example.nanobot.core.ai.provider.ResolvedProviderRoute
 import com.example.nanobot.core.mcp.McpRegistry
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.taskplan.StepStatus
+import com.example.nanobot.core.taskplan.TaskStateStore
 import com.example.nanobot.core.tools.ToolRegistry
 import com.example.nanobot.domain.repository.SkillRepository
 import com.example.nanobot.domain.repository.WorkspaceRepository
@@ -16,7 +18,8 @@ class RuntimeContextBuilder @Inject constructor(
     private val workspaceRepository: WorkspaceRepository,
     private val toolRegistry: ToolRegistry,
     private val skillRepository: SkillRepository,
-    private val mcpRegistry: McpRegistry
+    private val mcpRegistry: McpRegistry,
+    private val taskStateStore: TaskStateStore
 ) {
     suspend fun build(
         config: AgentConfig,
@@ -42,6 +45,7 @@ class RuntimeContextBuilder @Inject constructor(
         val enabledSkills = skillRepository.getEnabledSkills(config).map { it.id }
         val enabledMcpServers = mcpRegistry.listEnabledServers()
         val enabledMcpTools = mcpRegistry.listEnabledTools()
+        val activeTaskPlan = taskStateStore.activeForSession(runContext.sessionId)
         val diagnosticsEnabled = shouldExposeDiagnostics(latestUserInput)
 
         val alwaysOnLines = buildList {
@@ -51,7 +55,15 @@ class RuntimeContextBuilder @Inject constructor(
             add("Parent Session ID: ${runContext.parentSessionId ?: "(none)"}")
             add("Subagent Depth: ${runContext.subagentDepth}")
             add("Max Subagent Depth: ${runContext.maxSubagentDepth}")
+            add("Max Parallel Subagents: ${runContext.maxParallelSubagents}")
             add("Can Delegate Subtasks: ${runContext.canDelegate()}")
+            if (activeTaskPlan != null) {
+                add("Active Task Plan ID: ${activeTaskPlan.id}")
+                add("Active Task Plan Title: ${activeTaskPlan.title}")
+                add("Active Task Plan Status: ${activeTaskPlan.status}")
+                add("Active Task Pending Steps: ${activeTaskPlan.steps.count { it.status == StepStatus.PENDING || it.status == StepStatus.IN_PROGRESS }}")
+                add("If the user asks to continue, resume, keep going, or finish ongoing work, prefer using task_plan with action=resume.")
+            }
             add("Configured Provider: ${config.providerType.wireValue}")
             add("Model: ${route.resolvedModel}")
             add("Enable Tools: ${config.enableTools}")
@@ -82,6 +94,15 @@ class RuntimeContextBuilder @Inject constructor(
                 add("Workspace Sandbox: ${workspaceRoot.rootId}")
                 add("Workspace Available: ${workspaceRoot.isAvailable}")
                 add("Workspace Access Mode: ${workspaceRoot.accessMode}")
+                if (activeTaskPlan != null) {
+                    val activeStepPreview = activeTaskPlan.steps
+                        .filter { it.status == StepStatus.PENDING || it.status == StepStatus.IN_PROGRESS }
+                        .take(3)
+                        .joinToString(" | ") { step ->
+                            "${step.index + 1}:${step.status.name}:${step.description.take(40)}"
+                        }
+                    add("Active Task Plan Preview: ${activeStepPreview.ifBlank { "(all steps finished)" }}")
+                }
             }
         }
 

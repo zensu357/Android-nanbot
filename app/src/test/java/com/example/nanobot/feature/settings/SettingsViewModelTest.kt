@@ -311,6 +311,27 @@ class SettingsViewModelTest {
         assertEquals(true, settingsStore.savedConfig?.enableVisualMemory)
     }
 
+    @Test
+    fun savePersistsTaskPlanningAndBehaviorLearningFlags() = runSettingsTest {
+        val settingsStore = FakeSettingsConfigStore(AgentConfig())
+        val viewModel = createViewModel(
+            settingsStore,
+            FakeHeartbeatRepository(),
+            FakeMcpRegistry(),
+            FakeWorkerScheduler()
+        )
+
+        advanceUntilIdle()
+        viewModel.onEnableTaskPlanningChanged(false)
+        viewModel.onEnableBehaviorLearningChanged(false)
+
+        viewModel.saveSettings()
+        advanceUntilIdle()
+
+        assertEquals(false, settingsStore.savedConfig?.enableTaskPlanning)
+        assertEquals(false, settingsStore.savedConfig?.enableBehaviorLearning)
+    }
+
     private fun runSettingsTest(block: suspend kotlinx.coroutines.test.TestScope.() -> Unit) {
         val dispatcher = StandardTestDispatcher()
         Dispatchers.setMain(dispatcher)

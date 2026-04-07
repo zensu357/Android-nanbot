@@ -55,7 +55,11 @@ class HeartbeatWorker @AssistedInject constructor(
                 userInput = decision.tasks,
                 attachments = emptyList(),
                 config = config,
-                runContext = AgentRunContext.root(session.id, config.maxSubagentDepth),
+                runContext = AgentRunContext.root(
+                    sessionId = session.id,
+                    maxSubagentDepth = config.maxSubagentDepth,
+                    maxParallelSubagents = config.maxParallelSubagents
+                ),
                 onProgress = {}
             )
         }.getOrElse { throwable ->

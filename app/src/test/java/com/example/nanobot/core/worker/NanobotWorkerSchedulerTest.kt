@@ -45,6 +45,33 @@ class NanobotWorkerSchedulerTest {
     }
 
     @Test
+    fun enqueuesBehaviorAnalysisWhenLearningIsEnabled() = runTest {
+        val backend = RecordingScheduleBackend()
+        val scheduler = createScheduler(
+            config = AgentConfig(enableBehaviorLearning = true),
+            heartbeatEnabled = true
+        )
+
+        scheduler.refreshScheduling(backend)
+
+        assertTrue("behavior_analysis_work" in backend.enqueued)
+        assertEquals(true, backend.periodicRequiresBatteryNotLow["behavior_analysis_work"])
+    }
+
+    @Test
+    fun cancelsBehaviorAnalysisWhenLearningIsDisabled() = runTest {
+        val backend = RecordingScheduleBackend()
+        val scheduler = createScheduler(
+            config = AgentConfig(enableBehaviorLearning = false),
+            heartbeatEnabled = true
+        )
+
+        scheduler.refreshScheduling(backend)
+
+        assertTrue("behavior_analysis_work" in backend.cancelled)
+    }
+
+    @Test
     fun schedulesOneTimeReminderWorkAtReminderTriggerTime() = runTest {
         val backend = RecordingScheduleBackend()
         val scheduler = createScheduler(
@@ -82,6 +109,7 @@ class NanobotWorkerSchedulerTest {
         val enqueued = mutableListOf<String>()
         val enqueuedOneTime = mutableListOf<String>()
         val oneTimeDelays = mutableMapOf<String, Long>()
+        val periodicRequiresBatteryNotLow = mutableMapOf<String, Boolean>()
         val cancelled = mutableListOf<String>()
 
         override fun enqueueUniquePeriodicWork(
@@ -90,6 +118,7 @@ class NanobotWorkerSchedulerTest {
             request: androidx.work.PeriodicWorkRequest
         ) {
             enqueued += uniqueName
+            periodicRequiresBatteryNotLow[uniqueName] = request.workSpec.constraints.requiresBatteryNotLow()
         }
 
         override fun enqueueUniqueWork(

@@ -2,6 +2,7 @@ package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.learning.StrategyOptimizer
 import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.testutil.FakeSkillRepository
 import kotlin.test.Test
@@ -17,7 +18,8 @@ class SystemPromptBuilderTest {
             ToolAccessPolicy(),
             SkillSelector(),
             SkillPromptAssembler(),
-            ContextBudgetPlanner()
+            ContextBudgetPlanner(),
+            StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
         )
 
         val prompt = kotlinx.coroutines.runBlocking {
@@ -45,7 +47,8 @@ class SystemPromptBuilderTest {
             ToolAccessPolicy(),
             SkillSelector(),
             SkillPromptAssembler(),
-            ContextBudgetPlanner()
+            ContextBudgetPlanner(),
+            StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
         )
 
         val prompt = kotlinx.coroutines.runBlocking {
@@ -73,7 +76,8 @@ class SystemPromptBuilderTest {
             ToolAccessPolicy(),
             SkillSelector(),
             SkillPromptAssembler(),
-            ContextBudgetPlanner()
+            ContextBudgetPlanner(),
+            StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
         )
 
         val prompt = kotlinx.coroutines.runBlocking {
@@ -90,5 +94,67 @@ class SystemPromptBuilderTest {
 
         assertTrue(prompt.contains("## Visual Operation Protocol"))
         assertTrue(prompt.contains("When performing phone control tasks with visual capability:"))
+    }
+
+    @Test
+    fun injectsLearnedPreferencesWhenBehaviorLearningIsEnabled() {
+        val now = System.currentTimeMillis()
+        val behaviorDao = FakeBehaviorEventDao(
+            initialEvents = buildList {
+                repeat(12) { index ->
+                    add(
+                        com.example.nanobot.core.database.entity.BehaviorEventEntity(
+                            type = "TOOL_USAGE",
+                            key = "write_file",
+                            sessionId = "session-1",
+                            metadata = "{\"success\":true,\"duration_ms\":${100 + index}}",
+                            timestamp = now - index
+                        )
+                    )
+                }
+                repeat(4) { index ->
+                    add(
+                        com.example.nanobot.core.database.entity.BehaviorEventEntity(
+                            type = "FEEDBACK",
+                            key = "POSITIVE",
+                            sessionId = "session-1",
+                            metadata = "{\"signal\":\"POSITIVE\",\"response_style\":\"detailed\"}",
+                            timestamp = now - 100 - index
+                        )
+                    )
+                }
+                repeat(4) { index ->
+                    add(
+                        com.example.nanobot.core.database.entity.BehaviorEventEntity(
+                            type = "TASK_COMPLETION",
+                            key = "refactor",
+                            sessionId = "session-1",
+                            metadata = "{\"tool_sequence\":[\"read_file\",\"write_file\"],\"success\":true}",
+                            timestamp = now - 200 - index
+                        )
+                    )
+                }
+            }
+        )
+        val builder = SystemPromptBuilder(
+            PromptPresetCatalog(),
+            FakeSkillRepository(),
+            ToolAccessPolicy(),
+            SkillSelector(),
+            SkillPromptAssembler(),
+            ContextBudgetPlanner(),
+            StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(behaviorDao))
+        )
+
+        val prompt = kotlinx.coroutines.runBlocking {
+            builder.build(
+                AgentConfig(enableBehaviorLearning = true),
+                memoryContext = null
+            )
+        }
+
+        assertTrue(prompt.contains("## Learned Preferences"))
+        assertTrue(prompt.contains("Frequently Used Tools"))
+        assertTrue(prompt.contains("write_file"))
     }
 }

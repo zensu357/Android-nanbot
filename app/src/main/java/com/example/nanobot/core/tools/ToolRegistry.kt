@@ -125,6 +125,7 @@ class ToolRegistry(
         return AgentRunContext.root(
             sessionId = "tool-registry",
             maxSubagentDepth = config.maxSubagentDepth,
+            maxParallelSubagents = config.maxParallelSubagents,
             supportsVision = route.supportsImageAttachments
         )
     }

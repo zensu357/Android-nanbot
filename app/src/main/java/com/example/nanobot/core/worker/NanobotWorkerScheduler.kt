@@ -1,6 +1,7 @@
 package com.example.nanobot.core.worker
 
 import android.content.Context
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.OneTimeWorkRequest
@@ -107,6 +108,13 @@ class NanobotWorkerScheduler @Inject constructor(
             .build()
         val cleanupWork = PeriodicWorkRequestBuilder<SessionCleanupWorker>(1, TimeUnit.DAYS)
             .build()
+        val behaviorAnalysisWork = PeriodicWorkRequestBuilder<BehaviorAnalysisWorker>(24, TimeUnit.HOURS)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiresBatteryNotLow(true)
+                    .build()
+            )
+            .build()
 
         backend.enqueueUniquePeriodicWork(
             MEMORY_CONSOLIDATION_WORK,
@@ -132,6 +140,15 @@ class NanobotWorkerScheduler @Inject constructor(
             ExistingPeriodicWorkPolicy.UPDATE,
             cleanupWork
         )
+        if (config?.enableBehaviorLearning == true) {
+            backend.enqueueUniquePeriodicWork(
+                BEHAVIOR_ANALYSIS_WORK,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                behaviorAnalysisWork
+            )
+        } else {
+            backend.cancelUniqueWork(BEHAVIOR_ANALYSIS_WORK)
+        }
     }
 
     suspend fun scheduleReminder(
@@ -157,6 +174,7 @@ class NanobotWorkerScheduler @Inject constructor(
         const val HEARTBEAT_WORK = "heartbeat_work"
         const val REMINDER_WORK = "reminder_work"
         const val SESSION_CLEANUP_WORK = "session_cleanup_work"
+        const val BEHAVIOR_ANALYSIS_WORK = "behavior_analysis_work"
 
         fun reminderUniqueWorkName(reminderId: String): String = "reminder_once_$reminderId"
     }

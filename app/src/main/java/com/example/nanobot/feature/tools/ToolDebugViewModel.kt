@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -174,6 +175,34 @@ class ToolDebugViewModel @Inject constructor(
                 put("task", "Inspect the workspace and return a compact summary")
                 put("title", "Debug Delegated Task")
             }
+            "parallel_delegate" -> buildJsonObject {
+                put(
+                    "subtasks",
+                    buildJsonArray {
+                        add(
+                            buildJsonObject {
+                                put("task", "Inspect the workspace for TODO markers")
+                                put("title", "Workspace Scan")
+                                put("role", "REVIEWER")
+                                put("priority", 80)
+                            }
+                        )
+                        add(
+                            buildJsonObject {
+                                put("task", "Summarize the current tool access policy")
+                                put("title", "Policy Summary")
+                                put("role", "ANALYST")
+                                put("priority", 60)
+                            }
+                        )
+                    }
+                )
+                put("strategy", "MERGE_ALL")
+            }
+            "task_plan" -> buildJsonObject {
+                put("action", "plan")
+                put("goal", "Refactor the task-planning module into smaller verified steps")
+            }
             "session_snapshot" -> buildJsonObject { }
             else -> buildJsonObject { }
         }
@@ -185,6 +214,7 @@ class ToolDebugViewModel @Inject constructor(
         return AgentRunContext.root(
             sessionId = "tool-debug",
             maxSubagentDepth = config.maxSubagentDepth,
+            maxParallelSubagents = config.maxParallelSubagents,
             supportsVision = route.supportsImageAttachments
         )
     }

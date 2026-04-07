@@ -23,42 +23,57 @@ class SubagentCoordinator @Inject constructor(
             parentSessionId = null,
             subagentDepth = request.subagentDepth,
             maxSubagentDepth = request.maxSubagentDepth,
+            maxParallelSubagents = request.maxParallelSubagents,
             allowedToolNames = request.allowedToolNames,
             unlockedToolNames = request.unlockedToolNames,
             supportsVision = request.supportsVision
         )
-        if (!parentRunContext.canDelegate()) {
-            return SubagentResult(
-                sessionId = null,
-                parentSessionId = request.parentSessionId,
-                subagentDepth = request.subagentDepth,
-                summary = "Subagent delegation is blocked because the maximum subagent depth has been reached.",
-                completed = false
+        return delegate(
+            task = request.task,
+            title = request.title,
+            role = AgentRole.GENERAL,
+            config = config,
+            runContext = parentRunContext
+        )
+    }
+
+    suspend fun delegate(
+        task: String,
+        title: String? = null,
+        role: AgentRole = AgentRole.GENERAL,
+        config: AgentConfig,
+        runContext: AgentRunContext
+    ): SubagentResult {
+        if (!runContext.canDelegate()) {
+            return SubagentResult.depthExceeded(
+                parentSessionId = runContext.sessionId,
+                subagentDepth = runContext.subagentDepth
             )
         }
 
-        val sessionTitle = request.title?.trim().takeUnless { it.isNullOrBlank() }
-            ?: buildDefaultTitle(request.task)
+        val sessionTitle = title?.trim().takeUnless { it.isNullOrBlank() }
+            ?: buildDefaultTitle(task)
         val subagentSession = sessionRepository.createSession(
             title = sessionTitle,
             makeCurrent = false,
-            parentSessionId = request.parentSessionId,
-            subagentDepth = request.subagentDepth + 1
+            parentSessionId = runContext.sessionId,
+            subagentDepth = runContext.subagentDepth + 1
         )
+        val delegatedTask = augmentTaskForRole(task, role)
         val userMessage = ChatMessage(
             sessionId = subagentSession.id,
             role = MessageRole.USER,
-            content = request.task
+            content = delegatedTask
         )
         sessionRepository.saveMessage(userMessage)
 
         val turnResult = agentTurnRunnerProvider.get().runTurn(
             sessionId = subagentSession.id,
             history = emptyList(),
-            userInput = request.task,
+            userInput = delegatedTask,
             attachments = emptyList(),
             config = config,
-            runContext = parentRunContext.child(subagentSession.id),
+            runContext = runContext.child(subagentSession.id),
             onProgress = {}
         )
 
@@ -67,12 +82,26 @@ class SubagentCoordinator @Inject constructor(
 
         return SubagentResult(
             sessionId = subagentSession.id,
-            parentSessionId = request.parentSessionId,
-            subagentDepth = request.subagentDepth + 1,
+            parentSessionId = runContext.sessionId,
+            subagentDepth = runContext.subagentDepth + 1,
             summary = summarize(turnResult.newMessages),
             artifactPaths = collectArtifactPaths(turnResult.newMessages),
-            completed = true
+            completed = true,
+            success = true
         )
+    }
+
+    private fun augmentTaskForRole(task: String, role: AgentRole): String {
+        val trimmedTask = task.trim()
+        if (role == AgentRole.GENERAL) {
+            return trimmedTask
+        }
+        return buildString {
+            appendLine(role.systemPromptFragment)
+            appendLine()
+            append("Task: ")
+            append(trimmedTask)
+        }
     }
 
     private fun summarize(messages: List<ChatMessage>): String {

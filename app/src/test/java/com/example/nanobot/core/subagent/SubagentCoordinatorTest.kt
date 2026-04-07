@@ -71,6 +71,7 @@ class SubagentCoordinatorTest {
         assertEquals(childSession.id, recordedContext.sessionId)
         assertEquals("parent-session", recordedContext.parentSessionId)
         assertEquals(1, recordedContext.subagentDepth)
+        assertEquals(4, recordedContext.maxParallelSubagents)
     }
 
     @Test
@@ -131,11 +132,36 @@ class SubagentCoordinatorTest {
         assertTrue(cancelled)
     }
 
+    @Test
+    fun augmentsDelegatedTaskForSpecializedRoles() = runTest {
+        val sessionRepository = FakeSessionRepository()
+        val runner = RecordingAgentTurnRunner(
+            result = AgentTurnResult(newMessages = emptyList(), finalResponse = null)
+        )
+        val coordinator = SubagentCoordinator(sessionRepository, providerOf(runner))
+
+        coordinator.delegate(
+            task = "Review the implementation for hidden risks",
+            title = "Review",
+            role = AgentRole.REVIEWER,
+            config = AgentConfig(maxSubagentDepth = 3, maxParallelSubagents = 2),
+            runContext = AgentRunContext.root(
+                sessionId = "parent-session",
+                maxSubagentDepth = 3,
+                maxParallelSubagents = 2
+            )
+        )
+
+        assertTrue(runner.recordedUserInput.orEmpty().startsWith(AgentRole.REVIEWER.systemPromptFragment))
+        assertEquals(2, runner.recordedRunContext?.maxParallelSubagents)
+    }
+
     private class RecordingAgentTurnRunner(
         private val result: AgentTurnResult
     ) : AgentTurnRunner {
         var invocationCount: Int = 0
         var recordedRunContext: AgentRunContext? = null
+        var recordedUserInput: String? = null
 
         override suspend fun runTurn(
             sessionId: String,
@@ -148,6 +174,7 @@ class SubagentCoordinatorTest {
         ): AgentTurnResult {
             invocationCount += 1
             recordedRunContext = runContext
+            recordedUserInput = userInput
             return result.copy(
                 newMessages = result.newMessages.map { it.copy(sessionId = sessionId) },
                 finalResponse = result.finalResponse?.copy(sessionId = sessionId)

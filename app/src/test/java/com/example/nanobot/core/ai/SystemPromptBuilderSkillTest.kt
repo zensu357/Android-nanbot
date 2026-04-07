@@ -1,6 +1,7 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
+import com.example.nanobot.core.learning.StrategyOptimizer
 import com.example.nanobot.core.skills.SkillDefinition
 import com.example.nanobot.core.skills.SkillSource
 import com.example.nanobot.core.tools.ToolAccessPolicy
@@ -18,7 +19,8 @@ class SystemPromptBuilderSkillTest {
             toolAccessPolicy = ToolAccessPolicy(),
             skillSelector = SkillSelector(),
             skillPromptAssembler = SkillPromptAssembler(),
-            contextBudgetPlanner = ContextBudgetPlanner()
+            contextBudgetPlanner = ContextBudgetPlanner(),
+            strategyOptimizer = StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
         )
 
         val prompt = kotlinx.coroutines.runBlocking {
@@ -43,7 +45,8 @@ class SystemPromptBuilderSkillTest {
             toolAccessPolicy = ToolAccessPolicy(),
             skillSelector = SkillSelector(),
             skillPromptAssembler = SkillPromptAssembler(),
-            contextBudgetPlanner = ContextBudgetPlanner()
+            contextBudgetPlanner = ContextBudgetPlanner(),
+            strategyOptimizer = StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
         )
 
         val prompt = kotlinx.coroutines.runBlocking {
@@ -89,7 +92,8 @@ class SystemPromptBuilderSkillTest {
             toolAccessPolicy = ToolAccessPolicy(),
             skillSelector = SkillSelector(),
             skillPromptAssembler = SkillPromptAssembler(),
-            contextBudgetPlanner = ContextBudgetPlanner()
+            contextBudgetPlanner = ContextBudgetPlanner(),
+            strategyOptimizer = StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
         )
 
         val prompt = kotlinx.coroutines.runBlocking {

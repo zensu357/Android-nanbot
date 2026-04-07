@@ -176,6 +176,10 @@ class SettingsViewModel @Inject constructor(
 
     fun onEnableBackgroundWorkChanged(value: Boolean) = updateDraft { copy(enableBackgroundWork = value) }
 
+    fun onEnableTaskPlanningChanged(value: Boolean) = updateDraft { copy(enableTaskPlanning = value) }
+
+    fun onEnableBehaviorLearningChanged(value: Boolean) = updateDraft { copy(enableBehaviorLearning = value) }
+
     fun onVoiceInputEnabledChanged(value: Boolean) = updateDraft { copy(voiceInputEnabled = value) }
 
     fun onVoiceAutoPlayChanged(value: Boolean) = updateDraft { copy(voiceAutoPlay = value) }

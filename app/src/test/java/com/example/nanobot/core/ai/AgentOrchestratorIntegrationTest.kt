@@ -16,6 +16,10 @@ import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.core.model.ProviderChatResult
 import com.example.nanobot.core.model.ToolCallRequest
 import com.example.nanobot.core.memory.VisualMemoryExtractor
+import com.example.nanobot.core.learning.StrategyOptimizer
+import com.example.nanobot.core.taskplan.TaskExecutionEngine
+import com.example.nanobot.core.taskplan.TaskPlanner
+import com.example.nanobot.core.taskplan.TaskStateStore
 import com.example.nanobot.core.subagent.SubagentCoordinator
 import com.example.nanobot.core.tools.AgentTool
 import com.example.nanobot.core.tools.ToolAccessCategory
@@ -23,6 +27,8 @@ import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.core.tools.ToolRegistry
 import com.example.nanobot.core.tools.ToolValidator
 import com.example.nanobot.core.tools.impl.DelegateTaskTool
+import com.example.nanobot.core.tools.impl.ParallelDelegateTool
+import com.example.nanobot.core.tools.impl.TaskPlanTool
 import com.example.nanobot.core.skills.ActivatedSkillSessionStore
 import com.example.nanobot.domain.repository.ChatRepository
 import com.example.nanobot.domain.repository.MemoryRepository
@@ -41,6 +47,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -53,14 +60,15 @@ class AgentOrchestratorIntegrationTest {
         val chatRepository = DelegatingChatRepository()
         val skillRepository = FakeSkillRepository()
         val mcpRegistry = EmptyMcpRegistry()
+        val taskStateStore = TaskStateStore(FakeTaskPlanDao())
         lateinit var orchestrator: AgentOrchestrator
         val subagentCoordinator = SubagentCoordinator(sessionRepository, Provider { orchestrator })
         val toolRegistry = ToolRegistry(ToolValidator(), ToolAccessPolicy(), mcpRegistry).apply {
             register(DelegateTaskTool(subagentCoordinator))
         }
         val promptComposer = PromptComposer(
-            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner()),
-            runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry),
+            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner(), StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))),
+            runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry, taskStateStore),
             memoryConsolidator = MemoryConsolidator(
                 FakeMemoryRepository(),
                 chatRepository,
@@ -72,7 +80,7 @@ class AgentOrchestratorIntegrationTest {
             promptDiagnosticsStore = PromptDiagnosticsStore()
         )
         orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
-        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore())
+        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore(), taskStateStore)
 
         val messages = useCase(
             input = "Please delegate a focused report task.",
@@ -108,8 +116,8 @@ class AgentOrchestratorIntegrationTest {
             )
         }
         val promptComposer = PromptComposer(
-            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner()),
-            runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry),
+            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner(), StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))),
+            runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry, TaskStateStore(FakeTaskPlanDao())),
             memoryConsolidator = MemoryConsolidator(
                 FakeMemoryRepository(),
                 chatRepository,
@@ -121,7 +129,7 @@ class AgentOrchestratorIntegrationTest {
             promptDiagnosticsStore = PromptDiagnosticsStore()
         )
         orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
-        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore())
+        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore(), TaskStateStore(FakeTaskPlanDao()))
 
         val messages = useCase(
             input = "Please delegate a report and save it in the workspace.",
@@ -134,6 +142,118 @@ class AgentOrchestratorIntegrationTest {
         assertTrue(childMessages.any { it.role == MessageRole.TOOL && it.toolName == "write_file" && it.content.orEmpty().contains("reports/delegated-report.txt") })
         assertTrue(messages.any { it.role == MessageRole.TOOL && it.toolName == "delegate_task" && it.content.orEmpty().contains("Artifacts: reports/delegated-report.txt") })
         assertEquals("parent-session", sessionRepository.currentSessionId)
+    }
+
+    @Test
+    fun parallelDelegateCreatesMultipleChildSessionsAndMergesResults() = runTest {
+        val sessionRepository = FakeSessionRepository()
+        val chatRepository = ParallelDelegatingChatRepository()
+        val skillRepository = FakeSkillRepository()
+        val mcpRegistry = EmptyMcpRegistry()
+        lateinit var orchestrator: AgentOrchestrator
+        val subagentCoordinator = SubagentCoordinator(sessionRepository, Provider { orchestrator })
+        val toolRegistry = ToolRegistry(ToolValidator(), ToolAccessPolicy(), mcpRegistry).apply {
+            register(DelegateTaskTool(subagentCoordinator))
+            register(ParallelDelegateTool(com.example.nanobot.core.subagent.ParallelDispatcher(subagentCoordinator, com.example.nanobot.core.subagent.ResultAggregator())))
+        }
+        val promptComposer = PromptComposer(
+            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner(), StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))),
+            runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry, TaskStateStore(FakeTaskPlanDao())),
+            memoryConsolidator = MemoryConsolidator(
+                FakeMemoryRepository(),
+                chatRepository,
+                MemoryPromptBuilder(),
+                VisualMemoryExtractor(chatRepository)
+            ),
+            memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
+            historyExposurePlanner = HistoryExposurePlanner(),
+            promptDiagnosticsStore = PromptDiagnosticsStore()
+        )
+        orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
+        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore(), TaskStateStore(FakeTaskPlanDao()))
+
+        val messages = useCase(
+            input = "Please parallelize this review.",
+            config = AgentConfig(enableTools = true, maxParallelSubagents = 3)
+        )
+
+        val childSessions = sessionRepository.createdSessions.filter { it.parentSessionId == "parent-session" }
+        assertEquals(2, childSessions.size)
+        assertTrue(messages.any { it.role == MessageRole.TOOL && it.toolName == "parallel_delegate" && it.content.orEmpty().contains("## Parallel Results") })
+        assertTrue(messages.any { it.role == MessageRole.TOOL && it.toolName == "parallel_delegate" && it.content.orEmpty().contains("### Research Pass [completed]") })
+        assertTrue(messages.any { it.role == MessageRole.TOOL && it.toolName == "parallel_delegate" && it.content.orEmpty().contains("### Risk Review [completed]") })
+        assertTrue(childSessions.all { session -> sessionRepository.messagesBySession(session.id).any { it.role == MessageRole.ASSISTANT } })
+    }
+
+    @Test
+    fun continueWithActivePlanTriggersTaskPlanResumeFlow() = runTest {
+        val sessionRepository = FakeSessionRepository()
+        val chatRepository = TaskPlanningChatRepository()
+        val skillRepository = FakeSkillRepository()
+        val mcpRegistry = EmptyMcpRegistry()
+        val taskPlanDao = FakeTaskPlanDao()
+        val taskStateStore = TaskStateStore(taskPlanDao)
+        lateinit var orchestrator: AgentOrchestrator
+        val subagentCoordinator = SubagentCoordinator(sessionRepository, Provider { orchestrator })
+        val toolRegistry = ToolRegistry(ToolValidator(), ToolAccessPolicy(), mcpRegistry).apply {
+            register(DelegateTaskTool(subagentCoordinator))
+            register(ParallelDelegateTool(com.example.nanobot.core.subagent.ParallelDispatcher(subagentCoordinator, com.example.nanobot.core.subagent.ResultAggregator())))
+            register(
+                TaskPlanTool(
+                    planner = TaskPlanner(chatRepository),
+                    engine = TaskExecutionEngine(
+                        agentTurnRunnerProvider = Provider { orchestrator },
+                        parallelDispatcher = com.example.nanobot.core.subagent.ParallelDispatcher(subagentCoordinator, com.example.nanobot.core.subagent.ResultAggregator()),
+                        taskStateStore = taskStateStore,
+                        sessionRepository = sessionRepository
+                    ),
+                    store = taskStateStore
+                )
+            )
+        }
+        val promptComposer = PromptComposer(
+            systemPromptBuilder = SystemPromptBuilder(PromptPresetCatalog(), skillRepository, ToolAccessPolicy(), SkillSelector(), SkillPromptAssembler(), ContextBudgetPlanner(), StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))),
+            runtimeContextBuilder = RuntimeContextBuilder(FakeWorkspaceRepository(), toolRegistry, skillRepository, mcpRegistry, taskStateStore),
+            memoryConsolidator = MemoryConsolidator(
+                FakeMemoryRepository(),
+                chatRepository,
+                MemoryPromptBuilder(),
+                VisualMemoryExtractor(chatRepository)
+            ),
+            memoryExposurePlanner = MemoryExposurePlanner(FakeMemoryRepository()),
+            historyExposurePlanner = HistoryExposurePlanner(),
+            promptDiagnosticsStore = PromptDiagnosticsStore()
+        )
+        orchestrator = AgentOrchestrator(promptComposer, ToolLoopExecutor(chatRepository, toolRegistry))
+        val useCase = SendMessageUseCase(sessionRepository, orchestrator, skillRepository, ActivatedSkillSessionStore(), taskStateStore)
+
+        val firstTurn = useCase(
+            input = "Help me refactor this module over multiple steps.",
+            config = AgentConfig(enableTools = true, maxToolIterations = 2)
+        )
+
+        assertTrue(firstTurn.any { it.role == MessageRole.TOOL && it.toolName == "task_plan" && it.content.orEmpty().contains("## Task Plan:") })
+        val activePlan = taskStateStore.activeForSession("parent-session")
+        assertNotNull(activePlan)
+        assertEquals(com.example.nanobot.core.taskplan.TaskPlanStatus.PENDING, activePlan.status)
+
+        val secondTurn = useCase(
+            input = "继续",
+            config = AgentConfig(enableTools = true, maxToolIterations = 2)
+        )
+
+        val resumedPlan = taskStateStore.activeForSession("parent-session") ?: taskStateStore.loadBySession("parent-session").first()
+        assertEquals(com.example.nanobot.core.taskplan.TaskPlanStatus.IN_PROGRESS, resumedPlan.status)
+        assertTrue(secondTurn.any { it.role == MessageRole.TOOL && it.toolName == "task_plan" && it.content.orEmpty().contains("in_progress") })
+
+        val thirdTurn = useCase(
+            input = "继续",
+            config = AgentConfig(enableTools = true, maxToolIterations = 2)
+        )
+
+        val completedPlan = taskStateStore.loadBySession("parent-session").first()
+        assertEquals(com.example.nanobot.core.taskplan.TaskPlanStatus.COMPLETED, completedPlan.status)
+        assertTrue(thirdTurn.any { it.role == MessageRole.TOOL && it.toolName == "task_plan" && it.content.orEmpty().contains("completed") })
     }
 
     private class DelegatingChatRepository : ChatRepository {
@@ -214,6 +334,147 @@ class AgentOrchestratorIntegrationTest {
 
                 latestMessage.role == "tool" && latestMessage.toolCallId == "delegate-2" -> {
                     ProviderChatResult(content = "The delegated report has been saved and summarized.")
+                }
+
+                else -> ProviderChatResult(content = "Unhandled test branch.")
+            }
+        }
+    }
+
+    private class ParallelDelegatingChatRepository : ChatRepository {
+        override suspend fun completeChat(request: LlmChatRequest, config: AgentConfig): ProviderChatResult {
+            val latestMessage = request.messages.last()
+            val latestText = latestMessage.content?.jsonPrimitive?.contentOrNull.orEmpty()
+            return when {
+                latestMessage.role == "user" && latestText.contains("Please parallelize this review") -> {
+                    ProviderChatResult(
+                        content = null,
+                        toolCalls = listOf(
+                            ToolCallRequest(
+                                id = "parallel-1",
+                                name = "parallel_delegate",
+                                arguments = buildJsonObject {
+                                    put(
+                                        "subtasks",
+                                        buildJsonArray {
+                                            add(
+                                                buildJsonObject {
+                                                    put("task", "Research the current implementation details")
+                                                    put("title", "Research Pass")
+                                                    put("role", "RESEARCHER")
+                                                    put("priority", 80)
+                                                }
+                                            )
+                                            add(
+                                                buildJsonObject {
+                                                    put("task", "Review the implementation for risks")
+                                                    put("title", "Risk Review")
+                                                    put("role", "REVIEWER")
+                                                    put("priority", 60)
+                                                }
+                                            )
+                                        }
+                                    )
+                                    put("strategy", "MERGE_ALL")
+                                }
+                            )
+                        )
+                    )
+                }
+
+                latestMessage.role == "user" && latestText.contains("Research the current implementation details") -> {
+                    ProviderChatResult(content = "Research child completed with implementation findings.")
+                }
+
+                latestMessage.role == "user" && latestText.contains("Review the implementation for risks") -> {
+                    ProviderChatResult(content = "Review child completed with risk findings.")
+                }
+
+                latestMessage.role == "tool" && latestMessage.toolCallId == "parallel-1" -> {
+                    ProviderChatResult(content = "I merged the parallel child results into one answer.")
+                }
+
+                else -> ProviderChatResult(content = "Unhandled test branch.")
+            }
+        }
+    }
+
+    private class TaskPlanningChatRepository : ChatRepository {
+        override suspend fun completeChat(request: LlmChatRequest, config: AgentConfig): ProviderChatResult {
+            val latestMessage = request.messages.last()
+            val latestText = latestMessage.content?.jsonPrimitive?.contentOrNull.orEmpty()
+            return when {
+                latestMessage.role == "user" && latestText.contains("Help me refactor this module over multiple steps") -> {
+                    ProviderChatResult(
+                        content = null,
+                        toolCalls = listOf(
+                            ToolCallRequest(
+                                id = "task-plan-1",
+                                name = "task_plan",
+                                arguments = buildJsonObject {
+                                    put("action", "plan")
+                                    put("goal", "Refactor this module into smaller verified steps")
+                                }
+                            )
+                        )
+                    )
+                }
+
+                latestMessage.role == "user" && latestText.contains("Goal: Refactor this module into smaller verified steps") -> {
+                    ProviderChatResult(
+                        content = """
+                        {
+                          "complexity": 4,
+                          "title": "Refactor Module",
+                          "steps": [
+                            {
+                              "description": "Inspect the module and identify the key refactor boundaries",
+                              "depends_on": [],
+                              "delegatable": false,
+                              "complexity": "LOW"
+                            },
+                            {
+                              "description": "Apply the refactor and summarize the outcome",
+                              "depends_on": [0],
+                              "delegatable": false,
+                              "complexity": "MEDIUM"
+                            }
+                          ]
+                        }
+                        """.trimIndent()
+                    )
+                }
+
+                latestMessage.role == "tool" && latestMessage.toolCallId == "task-plan-1" -> {
+                    ProviderChatResult(content = "I created a plan. Ask me to continue when you want me to execute it.")
+                }
+
+                latestMessage.role == "user" && latestText.contains("继续") -> {
+                    ProviderChatResult(
+                        content = null,
+                        toolCalls = listOf(
+                            ToolCallRequest(
+                                id = "task-plan-2",
+                                name = "task_plan",
+                                arguments = buildJsonObject {
+                                    put("action", "resume")
+                                }
+                            )
+                        )
+                    )
+                }
+
+                latestMessage.role == "user" && latestText.contains("## Current Task Step") -> {
+                    val reply = when {
+                        latestText.contains("Inspect the module") -> "Inspection completed. The module can be split into planner and executor concerns."
+                        latestText.contains("Apply the refactor") -> "Refactor applied. The module is now split and the outcome is summarized."
+                        else -> "Step completed."
+                    }
+                    ProviderChatResult(content = reply)
+                }
+
+                latestMessage.role == "tool" && latestMessage.toolCallId == "task-plan-2" -> {
+                    ProviderChatResult(content = "The active plan has been resumed and completed.")
                 }
 
                 else -> ProviderChatResult(content = "Unhandled test branch.")
@@ -404,5 +665,21 @@ class AgentOrchestratorIntegrationTest {
         override suspend fun getDiscoverySnapshot(): McpToolDiscoverySnapshot {
             return McpToolDiscoverySnapshot(emptyList(), emptyList())
         }
+    }
+
+    private class FakeTaskPlanDao : com.example.nanobot.core.database.dao.TaskPlanDao {
+        private val plans = linkedMapOf<String, com.example.nanobot.core.database.entity.TaskPlanEntity>()
+
+        override suspend fun upsert(entity: com.example.nanobot.core.database.entity.TaskPlanEntity) {
+            plans[entity.id] = entity
+        }
+
+        override suspend fun getById(id: String): com.example.nanobot.core.database.entity.TaskPlanEntity? = plans[id]
+
+        override suspend fun getBySession(sessionId: String): List<com.example.nanobot.core.database.entity.TaskPlanEntity> =
+            plans.values.filter { it.sessionId == sessionId }.sortedByDescending { it.createdAt }
+
+        override suspend fun getActiveBySession(sessionId: String): com.example.nanobot.core.database.entity.TaskPlanEntity? =
+            plans.values.firstOrNull { it.sessionId == sessionId && (it.status == "PENDING" || it.status == "IN_PROGRESS") }
     }
 }

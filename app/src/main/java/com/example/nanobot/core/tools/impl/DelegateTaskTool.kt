@@ -22,7 +22,7 @@ class DelegateTaskTool @Inject constructor(
     override val name: String = "delegate_task"
     override val description: String = "Delegates one focused subtask into an isolated child session and returns a compact summary"
     override val accessCategory: ToolAccessCategory = ToolAccessCategory.LOCAL_ORCHESTRATION
-    override val availabilityHint: String = "Single-layer delegation only; blocked once max subagent depth is reached"
+    override val availabilityHint: String = "Delegates one focused subtask; blocked once max subagent depth is reached"
     override val parametersSchema: JsonObject = buildJsonObject {
         put("type", "object")
         putJsonObject("properties") {
@@ -56,6 +56,7 @@ class DelegateTaskTool @Inject constructor(
                 title = title,
                 subagentDepth = runContext.subagentDepth,
                 maxSubagentDepth = runContext.maxSubagentDepth,
+                maxParallelSubagents = runContext.maxParallelSubagents,
                 allowedToolNames = runContext.allowedToolNames,
                 unlockedToolNames = runContext.unlockedToolNames,
                 supportsVision = runContext.supportsVision

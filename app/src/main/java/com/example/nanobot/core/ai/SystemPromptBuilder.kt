@@ -2,6 +2,7 @@ package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.model.AgentConfig
 import com.example.nanobot.core.model.AgentRunContext
+import com.example.nanobot.core.learning.StrategyOptimizer
 import com.example.nanobot.domain.repository.SkillRepository
 import com.example.nanobot.core.tools.ToolAccessPolicy
 import javax.inject.Inject
@@ -12,7 +13,8 @@ class SystemPromptBuilder @Inject constructor(
     private val toolAccessPolicy: ToolAccessPolicy,
     private val skillSelector: SkillSelector,
     private val skillPromptAssembler: SkillPromptAssembler,
-    private val contextBudgetPlanner: ContextBudgetPlanner
+    private val contextBudgetPlanner: ContextBudgetPlanner,
+    private val strategyOptimizer: StrategyOptimizer
 ) {
     suspend fun build(
         config: AgentConfig,
@@ -36,6 +38,11 @@ class SystemPromptBuilder @Inject constructor(
             catalogSkills = skillPlan.catalogSkills,
             expandedSkills = emptyList()
         )
+        val strategyHints = if (config.enableBehaviorLearning) {
+            strategyOptimizer.generateStrategyHints()
+        } else {
+            null
+        }
         val sections = contextBudgetPlanner.apply(
             config = config,
             sections = listOf(
@@ -96,6 +103,14 @@ class SystemPromptBuilder @Inject constructor(
                     ),
                     category = PromptSectionCategory.CUSTOM,
                     priority = 75
+                ),
+                PlannedPromptSection(
+                    section = PromptSection(
+                        title = "Learned Preferences",
+                        body = strategyHints?.lines().orEmpty().filter { it.isNotBlank() }
+                    ),
+                    category = PromptSectionCategory.CUSTOM,
+                    priority = 72
                 ),
                 PlannedPromptSection(
                     section = PromptSection(

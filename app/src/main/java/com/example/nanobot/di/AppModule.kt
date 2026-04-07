@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.example.nanobot.core.database.NanobotDatabase
 import com.example.nanobot.core.database.dao.CustomSkillDao
+import com.example.nanobot.core.database.dao.BehaviorEventDao
 import com.example.nanobot.core.ai.AgentOrchestrator
 import com.example.nanobot.core.ai.AgentTurnRunner
 import com.example.nanobot.core.ai.HeartbeatDecisionEngine
@@ -27,6 +28,7 @@ import com.example.nanobot.core.database.dao.MemoryFactDao
 import com.example.nanobot.core.database.dao.MemorySummaryDao
 import com.example.nanobot.core.database.dao.ReminderDao
 import com.example.nanobot.core.database.dao.SessionDao
+import com.example.nanobot.core.database.dao.TaskPlanDao
 import com.example.nanobot.core.web.DefaultWebSearchEndpointProvider
 import com.example.nanobot.core.web.WebRequestGuard
 import com.example.nanobot.core.web.SafeDns
@@ -82,6 +84,8 @@ import com.example.nanobot.core.tools.impl.SessionSnapshotTool
 import com.example.nanobot.core.tools.impl.TakeScreenshotTool
 import com.example.nanobot.core.tools.impl.TapUiNodeTool
 import com.example.nanobot.core.tools.impl.AnalyzeScreenshotTool
+import com.example.nanobot.core.tools.impl.ParallelDelegateTool
+import com.example.nanobot.core.tools.impl.TaskPlanTool
 import com.example.nanobot.core.tools.impl.VisualVerifyTool
 import com.example.nanobot.core.tools.impl.WaitForUiTool
 import com.example.nanobot.core.tools.impl.WebFetchTool
@@ -178,6 +182,12 @@ object AppModule {
     fun provideCustomSkillDao(database: NanobotDatabase): CustomSkillDao = database.customSkillDao()
 
     @Provides
+    fun provideTaskPlanDao(database: NanobotDatabase): TaskPlanDao = database.taskPlanDao()
+
+    @Provides
+    fun provideBehaviorEventDao(database: NanobotDatabase): BehaviorEventDao = database.behaviorEventDao()
+
+    @Provides
     @Singleton
     fun provideSessionRepository(impl: SessionRepositoryImpl): SessionRepository = impl
 
@@ -268,6 +278,8 @@ object AppModule {
         mcpRegistry: McpRegistry,
         notifyUserTool: NotifyUserTool,
         delegateTaskTool: DelegateTaskTool,
+        parallelDelegateTool: ParallelDelegateTool,
+        taskPlanTool: TaskPlanTool,
         activateSkillTool: ActivateSkillTool,
         deviceTimeTool: DeviceTimeTool,
         listWorkspaceTool: ListWorkspaceTool,
@@ -296,6 +308,8 @@ object AppModule {
         return ToolRegistry(validator, accessPolicy, mcpRegistry).apply {
             register(notifyUserTool)
             register(delegateTaskTool)
+            register(parallelDelegateTool)
+            register(taskPlanTool)
             register(activateSkillTool)
             register(deviceTimeTool)
             register(listWorkspaceTool)

@@ -10,8 +10,10 @@ import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.ChatSession
 import com.example.nanobot.core.model.MessageRole
 import com.example.nanobot.core.model.AgentTurnResult
+import com.example.nanobot.core.learning.BehaviorTracker
 import com.example.nanobot.core.skills.ActivatedSkillSource
 import com.example.nanobot.core.skills.ActivatedSkillSessionStore
+import com.example.nanobot.core.taskplan.TaskStateStore
 import com.example.nanobot.core.skills.PendingPhoneControlUnlockConsent
 import com.example.nanobot.core.skills.SkillActivationPayload
 import com.example.nanobot.core.skills.SkillDefinition
@@ -41,6 +43,7 @@ class SendMessageUseCaseTest {
             agentTurnRunner = FakeAgentTurnRunner(),
             skillRepository = FakeSkillRepository(),
             activatedSkillSessionStore = ActivatedSkillSessionStore(),
+            taskStateStore = TaskStateStore(FakeTaskPlanDao()),
             memoryRefreshScheduler = scheduler
         )
 
@@ -83,6 +86,7 @@ class SendMessageUseCaseTest {
             agentTurnRunner = runner,
             skillRepository = skillRepository,
             activatedSkillSessionStore = activatedStore,
+            taskStateStore = TaskStateStore(FakeTaskPlanDao()),
             memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
         )
 
@@ -116,6 +120,7 @@ class SendMessageUseCaseTest {
             agentTurnRunner = runner,
             skillRepository = skillRepository,
             activatedSkillSessionStore = activatedStore,
+            taskStateStore = TaskStateStore(FakeTaskPlanDao()),
             memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
         )
 
@@ -150,6 +155,7 @@ class SendMessageUseCaseTest {
             agentTurnRunner = runner,
             skillRepository = skillRepository,
             activatedSkillSessionStore = activatedStore,
+            taskStateStore = TaskStateStore(FakeTaskPlanDao()),
             memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
         )
 
@@ -178,12 +184,41 @@ class SendMessageUseCaseTest {
             agentTurnRunner = runner,
             skillRepository = FakeSkillRepository(),
             activatedSkillSessionStore = ActivatedSkillSessionStore(),
+            taskStateStore = TaskStateStore(FakeTaskPlanDao()),
             memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
         )
 
         useCase(input = "Continue", config = AgentConfig())
 
         assertTrue(runner.lastHistory.none { it.toolName == "activate_skill:release-notes" })
+    }
+
+    @Test
+    fun followUpTurnRecordsImplicitAcceptanceFeedback() = runTest {
+        val sessionRepository = FakeSessionRepository().apply {
+            savedMessages += ChatMessage(
+                sessionId = "session-1",
+                role = MessageRole.ASSISTANT,
+                content = "Previous answer"
+            )
+        }
+        val behaviorDao = com.example.nanobot.core.ai.FakeBehaviorEventDao()
+        val useCase = SendMessageUseCase(
+            sessionRepository = sessionRepository,
+            agentTurnRunner = FakeAgentTurnRunner(),
+            skillRepository = FakeSkillRepository(),
+            activatedSkillSessionStore = ActivatedSkillSessionStore(),
+            taskStateStore = TaskStateStore(FakeTaskPlanDao()),
+            behaviorTracker = BehaviorTracker(behaviorDao),
+            memoryRefreshScheduler = RecordingMemoryRefreshScheduler()
+        )
+
+        useCase(input = "继续", config = AgentConfig(enableBehaviorLearning = true))
+
+        val feedbackEvent = behaviorDao.allEvents().singleOrNull()
+        assertNotNull(feedbackEvent)
+        assertEquals("FEEDBACK", feedbackEvent.type)
+        assertTrue(feedbackEvent.metadata.contains("IMPLICIT_ACCEPTANCE"))
     }
 
     private class FakeAgentTurnRunner : AgentTurnRunner {
@@ -305,5 +340,12 @@ class SendMessageUseCaseTest {
         override suspend fun acceptPendingPhoneControlUnlockConsent(packageId: String): PhoneControlUnlockReceipt? = null
         override suspend fun rejectPendingPhoneControlUnlockConsent(packageId: String) = Unit
         override suspend fun getHiddenToolEntitlements(skill: SkillDefinition): Set<String> = hiddenEntitlementsBySkillId[skill.id].orEmpty()
+    }
+
+    private class FakeTaskPlanDao : com.example.nanobot.core.database.dao.TaskPlanDao {
+        override suspend fun upsert(entity: com.example.nanobot.core.database.entity.TaskPlanEntity) = Unit
+        override suspend fun getById(id: String): com.example.nanobot.core.database.entity.TaskPlanEntity? = null
+        override suspend fun getBySession(sessionId: String): List<com.example.nanobot.core.database.entity.TaskPlanEntity> = emptyList()
+        override suspend fun getActiveBySession(sessionId: String): com.example.nanobot.core.database.entity.TaskPlanEntity? = null
     }
 }

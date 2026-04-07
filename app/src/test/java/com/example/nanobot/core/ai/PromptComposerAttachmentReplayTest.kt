@@ -1,6 +1,7 @@
 package com.example.nanobot.core.ai
 
 import com.example.nanobot.core.memory.VisualMemoryExtractor
+import com.example.nanobot.core.learning.StrategyOptimizer
 import com.example.nanobot.core.mcp.McpRefreshResult
 import com.example.nanobot.core.mcp.McpRegistry
 import com.example.nanobot.core.mcp.McpServerDefinition
@@ -14,6 +15,7 @@ import com.example.nanobot.core.model.ChatMessage
 import com.example.nanobot.core.model.MemoryFact
 import com.example.nanobot.core.model.MemorySummary
 import com.example.nanobot.core.model.MessageRole
+import com.example.nanobot.core.taskplan.TaskStateStore
 import com.example.nanobot.core.tools.ToolAccessPolicy
 import com.example.nanobot.core.tools.ToolRegistry
 import com.example.nanobot.core.tools.ToolValidator
@@ -47,13 +49,15 @@ class PromptComposerAttachmentReplayTest {
                 ToolAccessPolicy(),
                 SkillSelector(),
                 SkillPromptAssembler(),
-                ContextBudgetPlanner()
+                ContextBudgetPlanner(),
+                StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
             ),
             runtimeContextBuilder = RuntimeContextBuilder(
                 workspaceRepository = FakeWorkspaceRepository(),
                 toolRegistry = ToolRegistry(ToolValidator(), ToolAccessPolicy()),
                 skillRepository = FakeSkillRepository(),
-                mcpRegistry = FakeMcpRegistry()
+                mcpRegistry = FakeMcpRegistry(),
+                taskStateStore = TaskStateStore(FakeTaskPlanDao())
             ),
             memoryConsolidator = MemoryConsolidator(
                 FakeMemoryRepository(),
@@ -115,13 +119,15 @@ class PromptComposerAttachmentReplayTest {
                 ToolAccessPolicy(),
                 SkillSelector(),
                 SkillPromptAssembler(),
-                ContextBudgetPlanner()
+                ContextBudgetPlanner(),
+                StrategyOptimizer(com.example.nanobot.core.learning.BehaviorAnalyzer(FakeBehaviorEventDao()))
             ),
             runtimeContextBuilder = RuntimeContextBuilder(
                 workspaceRepository = FakeWorkspaceRepository(),
                 toolRegistry = ToolRegistry(ToolValidator(), ToolAccessPolicy()),
                 skillRepository = FakeSkillRepository(),
-                mcpRegistry = FakeMcpRegistry()
+                mcpRegistry = FakeMcpRegistry(),
+                taskStateStore = TaskStateStore(FakeTaskPlanDao())
             ),
             memoryConsolidator = MemoryConsolidator(
                 FakeMemoryRepository(),
@@ -177,6 +183,13 @@ class PromptComposerAttachmentReplayTest {
         override suspend fun pruneFacts(maxFacts: Int) = Unit
         override suspend fun upsertFact(fact: MemoryFact) = Unit
         override suspend fun upsertSummary(summary: MemorySummary) = Unit
+    }
+
+    private class FakeTaskPlanDao : com.example.nanobot.core.database.dao.TaskPlanDao {
+        override suspend fun upsert(entity: com.example.nanobot.core.database.entity.TaskPlanEntity) = Unit
+        override suspend fun getById(id: String): com.example.nanobot.core.database.entity.TaskPlanEntity? = null
+        override suspend fun getBySession(sessionId: String): List<com.example.nanobot.core.database.entity.TaskPlanEntity> = emptyList()
+        override suspend fun getActiveBySession(sessionId: String): com.example.nanobot.core.database.entity.TaskPlanEntity? = null
     }
 
     private class FakeWorkspaceRepository : WorkspaceRepository {
